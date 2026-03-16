@@ -23,13 +23,13 @@ class Particle:
         self.vx = math.cos(angle) * speed
         self.vy = math.sin(angle) * speed
 
-        self.life = random.randint(40, 80)
+        self.life = random.randint(30, 80)
         self.size = random.randint(3, 7)
 
         self.color = (
-            random.randint(150,255),
-            random.randint(100,255),
-            random.randint(150,255)
+            random.randint(180,255),
+            random.randint(120,255),
+            random.randint(200,255)
         )
 
     def update(self):
@@ -54,8 +54,13 @@ class Particle:
 
 def draw_background(surface, t):
     for y in range(HEIGHT):
-        c = int(40 + 30 * math.sin(y * 0.01 + t))
-        color = (10, c, 50 + c//2)
+
+        r = int(120 + 100 * math.sin(y * 0.01 + t))
+        g = int(120 + 100 * math.sin(y * 0.013 + t + 2))
+        b = int(120 + 100 * math.sin(y * 0.017 + t + 4))
+
+        color = (r, g, b)
+
         pygame.draw.line(surface, color, (0, y), (WIDTH, y))
 
 
