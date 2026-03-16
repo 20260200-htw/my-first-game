@@ -24,12 +24,25 @@ class Particle:
         self.vy = math.sin(angle) * speed
 
         self.life = random.randint(30, 80)
-        self.size = random.randint(3, 7)
+        self.size = random.randint(4, 12)
+
+        palette = [
+            (255, 80, 200),
+            (80, 200, 255),
+            (255, 240, 80),
+            (180, 80, 255),
+            (80, 255, 180),
+            (255, 120, 120),
+            (255, 180, 255),
+            (120, 255, 255)
+        ]
+
+        base = random.choice(palette)
 
         self.color = (
-            random.randint(180,255),
-            random.randint(120,255),
-            random.randint(200,255)
+            min(255, base[0] + random.randint(-20, 40)),
+            min(255, base[1] + random.randint(-20, 40)),
+            min(255, base[2] + random.randint(-20, 40))
         )
 
     def update(self):
