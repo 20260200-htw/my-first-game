@@ -75,7 +75,7 @@ while running:
         for _ in range(8):
             particles.append(Particle(mouse[0], mouse[1]))
 
-    time += 0.03
+    time += 0.01
 
     draw_background(screen, time)
 
