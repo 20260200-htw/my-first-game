@@ -6,8 +6,11 @@ pygame.display.set_caption("My First Pygame")
 WHITE = (0, 0, 0)
 BLUE = (255, 0, 0)
 clock = pygame.time.Clock()
-font = pygame.font.Font(None, 24)
-SIZE = 10
+
+# 한국어를 지원하는 폰트를 사용
+font = pygame.font.SysFont("malgun gothic", 24)
+
+RADIUS = 10
 circle_x = 400
 circle_y = 300
 running = True
@@ -24,21 +27,13 @@ while running:
         circle_y -= 10
     if keys[pygame.K_DOWN]:
         circle_y += 10
-    circle_x = max(SIZE, min(circle_x, 400 - SIZE))
-    circle_y = max(SIZE, min(circle_y, 400 - SIZE))
+    circle_x = max(RADIUS, min(circle_x, 400 - RADIUS))
+    circle_y = max(RADIUS, min(circle_y, 400 - RADIUS))
     screen.fill(WHITE)
-
-    # AI로 작성된 주석입니다. 삼각형의 세 꼭짓점 좌표 계산 (중심 기준 위쪽/좌하/우하)
-    triangle_points = [
-        (circle_x, circle_y - SIZE),
-        (circle_x - SIZE, circle_y + SIZE),
-        (circle_x + SIZE, circle_y + SIZE)
-    ]
-    # AI로 작성된 주석입니다. pygame.draw.polygon 으로 삼각형 그리기, 마지막 숫자(1) = 테두리 두께
-    pygame.draw.polygon(screen, BLUE, triangle_points, 1)
-
+    pygame.draw.circle(screen, BLUE, (circle_x, circle_y), RADIUS, 1)
     fps = int(clock.get_fps())
-    fps_text = font.render(f"FPS: {fps}", True, (255, 255, 255))
+    # fps -> 초당 프레임
+    fps_text = font.render(f"초당 프레임: {fps}", True, (255, 255, 255))
     screen.blit(fps_text, (10, 10))
     pygame.display.flip()
     clock.tick(60)
