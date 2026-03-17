@@ -7,10 +7,7 @@ WHITE = (0, 0, 0)
 BLUE = (255, 0, 0)
 clock = pygame.time.Clock()
 font = pygame.font.Font(None, 24)
-
-# [추가] 원의 반지름 변수로 분리
 RADIUS = 10
-
 circle_x = 400
 circle_y = 300
 running = True
@@ -27,11 +24,8 @@ while running:
         circle_y -= 10
     if keys[pygame.K_DOWN]:
         circle_y += 10
-
-    # [추가] 원이 화면 밖으로 나가지 못하도록 좌표 제한
     circle_x = max(RADIUS, min(circle_x, 400 - RADIUS))
     circle_y = max(RADIUS, min(circle_y, 400 - RADIUS))
-
     screen.fill(WHITE)
     pygame.draw.circle(screen, BLUE, (circle_x, circle_y), RADIUS, 1)
     fps = int(clock.get_fps())
