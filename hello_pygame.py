@@ -1,6 +1,6 @@
 import pygame
 import sys
-import random # AI로 작성된 주석입니다. 랜덤 색상 생성을 위한 모듈 추가
+import random
 pygame.init()
 screen = pygame.display.set_mode((400, 400))
 pygame.display.set_caption("My First Pygame")
@@ -11,33 +11,29 @@ font = pygame.font.Font(None, 24)
 RADIUS = 10
 circle_x = 400
 circle_y = 300
-# AI로 작성된 주석입니다. 원의 초기 색상을 BLUE로 설정
 circle_color = BLUE
 running = True
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-    keys = pygame.key.get_pressed()
 
-    # AI로 작성된 주석입니다. 방향키 입력 감지 후 이동 + 색상 변경
-    key_pressed = False
+        # AI로 작성된 주석입니다. 키를 누른 순간 1회만 감지하는 KEYDOWN 이벤트
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN):
+                # AI로 작성된 주석입니다. 방향키 입력 시 색상을 랜덤으로 1회 변경
+                circle_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+
+    # 이동은 기존 get_pressed() 방식 유지 (누르는 동안 계속 이동)
+    keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT]:
         circle_x -= 10
-        key_pressed = True
     if keys[pygame.K_RIGHT]:
         circle_x += 10
-        key_pressed = True
     if keys[pygame.K_UP]:
         circle_y -= 10
-        key_pressed = True
     if keys[pygame.K_DOWN]:
         circle_y += 10
-        key_pressed = True
-
-    # AI로 작성된 주석입니다. 방향키가 눌렸을 때 RGB 각각 0~255 랜덤 색상 적용
-    if key_pressed:
-        circle_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
     circle_x = max(RADIUS, min(circle_x, 400 - RADIUS))
     circle_y = max(RADIUS, min(circle_y, 400 - RADIUS))
