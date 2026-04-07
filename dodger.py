@@ -137,7 +137,7 @@ ENEMY_W,  ENEMY_H  = 30, 30
 
 # ── 보스 설정 ─────────────────────────────────────────────────
 BOSS_W, BOSS_H     = 80, 80
-BOSS_MAX_HP        = 1000
+BOSS_MAX_HP        = 100
 BOSS_HP_BAR_W      = 600
 BOSS_HP_BAR_H      = 24
 BOSS_COLLISION_DMG = 10
