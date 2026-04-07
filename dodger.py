@@ -52,7 +52,7 @@ boss_hit_sfx    = load_sound("./assets/sounds/boss_hit.ogg",    0.25)
 boss_attack_sfx = load_sound("./assets/sounds/boss_attack.wav", 1.0)
 
 # ── 배경 음악 ─────────────────────────────────────────────────
-BGM_VOLUME = 0.5
+BGM_VOLUME = 0.1
 if os.path.exists("./assets/sounds/game_bgm.mp3"):
     pygame.mixer.music.load("./assets/sounds/game_bgm.mp3")
     pygame.mixer.music.set_volume(BGM_VOLUME)
@@ -95,7 +95,7 @@ SPRITE_DISPLAY_W = 160
 SPRITE_DISPLAY_H = int(WALK_FRAME_H * (SPRITE_DISPLAY_W / WALK_FRAME_W))
 
 # 보스 스프라이트 표시 크기
-BOSS_DISPLAY_W = 320
+BOSS_DISPLAY_W = 200
 BOSS_DISPLAY_H = int(BOSS_FRAME_H * (BOSS_DISPLAY_W / BOSS_FRAME_W))
 
 
@@ -137,7 +137,7 @@ ENEMY_W,  ENEMY_H  = 30, 30
 
 # ── 보스 설정 ─────────────────────────────────────────────────
 BOSS_W, BOSS_H     = 80, 80
-BOSS_MAX_HP        = 500
+BOSS_MAX_HP        = 1000
 BOSS_HP_BAR_W      = 600
 BOSS_HP_BAR_H      = 24
 BOSS_COLLISION_DMG = 10
