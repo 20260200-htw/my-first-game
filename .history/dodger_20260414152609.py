@@ -167,7 +167,7 @@ BOSS_LEASH_X = 1920
 BOSS_LEASH_Y = 1080
 
 # ── 모서리 거대 투사체 설정 ──────────────────────────────
-CORNER_BULLET_SPEED  = 3          # 속도 (여기서 조정)
+CORNER_BULLET_SPEED  = 1          # 속도 (여기서 조정)
 CORNER_BULLET_W      = ENEMY_W * 10  # 가로 크기 (여기서 조정)
 CORNER_BULLET_H      = ENEMY_H * 10  # 세로 크기 (여기서 조정)
 CORNER_BULLET_INTERVAL_MS = 15000   # 발사 간격 15초

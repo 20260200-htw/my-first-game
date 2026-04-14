@@ -167,7 +167,7 @@ BOSS_LEASH_X = 1920
 BOSS_LEASH_Y = 1080
 
 # ── 모서리 거대 투사체 설정 ──────────────────────────────
-CORNER_BULLET_SPEED  = 3          # 속도 (여기서 조정)
+CORNER_BULLET_SPEED  = 1          # 속도 (여기서 조정)
 CORNER_BULLET_W      = ENEMY_W * 10  # 가로 크기 (여기서 조정)
 CORNER_BULLET_H      = ENEMY_H * 10  # 세로 크기 (여기서 조정)
 CORNER_BULLET_INTERVAL_MS = 15000   # 발사 간격 15초
@@ -627,7 +627,7 @@ def main():
                         parry_sound.play()
             for cb in corner_bullets[:]:
                 if pygame.math.Vector2(item[0] - cb[0].centerx,
-                                       item[1] - cb[0].centery).length() < 500:
+                                       item[1] - cb[0].centery).length() < 50:
                     enemies = [p for p in enemies
                                if abs(p[0].centerx - player.centerx) > 500 or
                                   abs(p[0].centery - player.centery) > 500]

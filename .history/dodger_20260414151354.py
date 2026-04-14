@@ -156,7 +156,7 @@ PLAYER_W, PLAYER_H = 30, 30
 ENEMY_W,  ENEMY_H  = 30, 30
 
 BOSS_W, BOSS_H     = 80, 80
-BOSS_MAX_HP        = 100
+BOSS_MAX_HP        = 1000
 BOSS_HP_BAR_W      = 600
 BOSS_HP_BAR_H      = 24
 BOSS_COLLISION_DMG = 10
@@ -167,9 +167,9 @@ BOSS_LEASH_X = 1920
 BOSS_LEASH_Y = 1080
 
 # ── 모서리 거대 투사체 설정 ──────────────────────────────
-CORNER_BULLET_SPEED  = 3          # 속도 (여기서 조정)
-CORNER_BULLET_W      = ENEMY_W * 10  # 가로 크기 (여기서 조정)
-CORNER_BULLET_H      = ENEMY_H * 10  # 세로 크기 (여기서 조정)
+CORNER_BULLET_SPEED  = 0.4          # 속도 (여기서 조정)
+CORNER_BULLET_W      = ENEMY_W * 3  # 가로 크기 (여기서 조정)
+CORNER_BULLET_H      = ENEMY_H * 3  # 세로 크기 (여기서 조정)
 CORNER_BULLET_INTERVAL_MS = 15000   # 발사 간격 15초
 
 
@@ -562,8 +562,8 @@ def main():
             cb[0].x = int(cb[3])
             cb[0].y = int(cb[4])
             # 범위 밖이면 제거
-            if not (abs(cb[0].centerx - player.centerx) < WIDTH * 11 and
-                    abs(cb[0].centery - player.centery) < HEIGHT * 11):
+            if not (abs(cb[0].centerx - player.centerx) < WIDTH * 2 and
+                    abs(cb[0].centery - player.centery) < HEIGHT * 2):
                 continue
             # 플레이어 충돌
             if invincible <= 0 and player.colliderect(cb[0]):
@@ -625,20 +625,6 @@ def main():
                     parry_cooldown = 0.0
                     if parry_sound:
                         parry_sound.play()
-            for cb in corner_bullets[:]:
-                if pygame.math.Vector2(item[0] - cb[0].centerx,
-                                       item[1] - cb[0].centery).length() < 500:
-                    enemies = [p for p in enemies
-                               if abs(p[0].centerx - player.centerx) > 500 or
-                                  abs(p[0].centery - player.centery) > 500]
-                    corner_bullets = [c for c in corner_bullets
-                                      if abs(c[0].centerx - player.centerx) > 500 or
-                                         abs(c[0].centery - player.centery) > 500]
-                    lives = min(lives + 20, PLAYER_MAX_HP)
-                    parry_cooldown = 0.0
-                    if parry_sound:
-                        parry_sound.play()
-                    break
             if item[2] > 0:
                 new_parry_list.append(item)
             else:
