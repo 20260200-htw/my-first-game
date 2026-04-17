@@ -441,7 +441,7 @@ def main():
     intro_timer = 0.0; phase_idx = 0
     level_cfg = PHASES[phase_idx]
     elapsed_time = 0.0; parry_cooldown = 0.0
-    PARRY_DURATION_MS = 250
+    PARRY_DURATION_MS = 100
     hit_count = 0; phase3_wave = 0
 
     frame_index = 0; frame_timer = 0.0
@@ -675,10 +675,6 @@ def main():
         border_screen = pygame.Rect(-cam_x, -cam_y, MAP_W, MAP_H)
         pygame.draw.rect(screen, (80, 80, 120), border_screen, 3)
 
-        for item in parry_list:
-            sx, sy = world_to_screen(item[0], item[1], cam_x, cam_y)
-            pygame.draw.circle(screen, WHITE, (int(sx), int(sy)), 50, 1)
-
         for ally in allies:
             pygame.draw.rect(screen, BLUE, rect_to_screen(ally[0], cam_x, cam_y))
 
@@ -750,6 +746,10 @@ def main():
         for pair in enemies:
             pygame.draw.rect(screen, RED, rect_to_screen(pair[0], cam_x, cam_y))
 
+        for item in parry_list:
+            sx, sy = world_to_screen(item[0], item[1], cam_x, cam_y)
+            pygame.draw.circle(screen, WHITE, (int(sx), int(sy)), 50, 2)
+            
         draw_hud(level_cfg, lives, parry_cooldown)
         draw_boss_hud(boss_hp)
         draw_parry_cooldown(player_screen_rect, parry_cooldown)
