@@ -102,11 +102,22 @@ boss_attack_sfx = load_sound_b64(BOSS_ATTACK_B64, 1.0)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BGM_VOLUME = 0.1
-bgm_path = os.path.join(BASE_DIR, "assets", "sounds", "game_bgm.mp3")
-if os.path.exists(bgm_path):
-    pygame.mixer.music.load(bgm_path)
-    pygame.mixer.music.set_volume(BGM_VOLUME)
-    pygame.mixer.music.play(-1)
+
+TITLE_BGM_PATH    = os.path.join(BASE_DIR, "assets", "sounds", "title_bgm.mp3")
+GAME_BGM_PATH     = os.path.join(BASE_DIR, "assets", "sounds", "game_bgm.mp3")
+GAMEOVER_BGM_PATH = os.path.join(BASE_DIR, "assets", "sounds", "gameover_bgm.mp3")
+
+
+def play_bgm(path):
+    if not os.path.exists(path):
+        return
+    try:
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(path)
+        pygame.mixer.music.set_volume(BGM_VOLUME)
+        pygame.mixer.music.play(-1)
+    except Exception as e:
+        print(f"BGM 로드 실패: {e}")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  플레이어 스프라이트 Base64 (공란)
@@ -200,9 +211,9 @@ CORNER_BULLET_DISPLAY_H = 175
 GAME_OVER_SPRITE_B64       = ""
 GAME_OVER_SPRITE_FRAME_W   = 96
 GAME_OVER_SPRITE_FRAME_H   = 84
-GAME_OVER_SPRITE_COLS      = 8
-GAME_OVER_SPRITE_COUNT     = 8
-GAME_OVER_SPRITE_DELAY     = 100
+GAME_OVER_SPRITE_COLS      = 12
+GAME_OVER_SPRITE_COUNT     = 12
+GAME_OVER_SPRITE_DELAY     = 150
 GAME_OVER_SPRITE_DISPLAY_W = 200
 GAME_OVER_SPRITE_DISPLAY_H = 200
 
@@ -350,7 +361,8 @@ def spawn_enemy(level_cfg, target, boss_rect):
         direction = direction.normalize() * speed
     else:
         direction = pygame.math.Vector2(speed, 0)
-    return rect, direction.x, direction.y, fx, fy
+    angle = -math.degrees(math.atan2(direction.y, direction.x))
+    return rect, direction.x, direction.y, fx, fy, angle
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -485,10 +497,20 @@ def draw_projectile_sprite(surface, frames, frame_index, count,
     surface.blit(scaled, (screen_cx - display_w // 2, screen_cy - display_h // 2))
 
 
+def draw_projectile_sprite_rotated(surface, frames, frame_index, count,
+                                    display_w, display_h, screen_cx, screen_cy, angle):
+    src = frames[frame_index % count]
+    scaled = pygame.transform.scale(src, (display_w, display_h))
+    rotated = pygame.transform.rotate(scaled, angle)
+    rw, rh = rotated.get_size()
+    surface.blit(rotated, (screen_cx - rw // 2, screen_cy - rh // 2))
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  게임 오버 화면
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def game_over_screen():
+    play_bgm(GAMEOVER_BGM_PATH)
     font_title = get_korean_font(96)
     font_menu  = get_korean_font(48)
     font_hint  = get_korean_font(24)
@@ -555,10 +577,11 @@ def game_over_screen():
 
         # ── 스프라이트 애니메이션 업데이트 ──────────────────
         if USE_GAME_OVER_SPRITE:
-            go_frame_timer += dt
-            if go_frame_timer >= GAME_OVER_SPRITE_DELAY:
-                go_frame_timer = 0.0
-                go_frame_index = (go_frame_index + 1) % GAME_OVER_SPRITE_COUNT
+            if go_frame_index < GAME_OVER_SPRITE_COUNT - 1:
+                go_frame_timer += dt
+                if go_frame_timer >= GAME_OVER_SPRITE_DELAY:
+                    go_frame_timer = 0.0
+                    go_frame_index = min(go_frame_index + 1, GAME_OVER_SPRITE_COUNT - 1)
 
         # ── 렌더링 ───────────────────────────────────────────
         screen.fill(GRAY)
@@ -639,6 +662,7 @@ def boss_clear_screen(score):
 
 
 def main():
+    play_bgm(GAME_BGM_PATH)
     map_tiles = generate_tilemap()
 
     player_fx = float(MAP_W // 2 + 400)
@@ -808,12 +832,13 @@ def main():
                         angle_rad = math.radians(offset_deg + i * 45.0)
                         rect = pygame.Rect(int(boss_rect.centerx)-ENEMY_W//2,
                                            int(boss_rect.centery)-ENEMY_H//2 +50, ENEMY_W, ENEMY_H)
+                        angle_deg = -math.degrees(angle_rad)
                         enemies.append([rect, math.cos(angle_rad)*speed, math.sin(angle_rad)*speed,
-                                        float(rect.x), float(rect.y)])
+                                        float(rect.x), float(rect.y), angle_deg])
                 else:
                     for _ in range(level_cfg["count"]):
-                        rect, vx, vy, fx, fy = spawn_enemy(level_cfg, player, boss_rect)
-                        enemies.append([rect, vx, vy, fx, fy])
+                        rect, vx, vy, fx, fy, angle = spawn_enemy(level_cfg, player, boss_rect)
+                        enemies.append([rect, vx, vy, fx, fy, angle])
                 if boss_attack_sfx: boss_attack_sfx.play()
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -884,7 +909,8 @@ def main():
                                                   boss_rect.centery-pair[0].centery)
                     if to_boss.length() != 0: to_boss = to_boss.normalize() * 5.0
                     copied = pair[0].copy()
-                    allies.append([copied, to_boss.x, to_boss.y, float(copied.x), float(copied.y)])
+                    to_boss_angle = -math.degrees(math.atan2(to_boss.y, to_boss.x))
+                    allies.append([copied, to_boss.x, to_boss.y, float(copied.x), float(copied.y), to_boss_angle])
                     enemies.remove(pair)
                     lives = min(lives + 20, PLAYER_MAX_HP)
                     parry_cooldown = 0.0
@@ -959,9 +985,9 @@ def main():
         for ally in allies:
             sr = rect_to_screen(ally[0], cam_x, cam_y)
             if USE_ALLY:
-                draw_projectile_sprite(screen, ally_frames, ally_frame_index,
-                                       ALLY_COUNT, ALLY_DISPLAY_W, ALLY_DISPLAY_H,
-                                       sr.centerx, sr.centery)
+                draw_projectile_sprite_rotated(screen, ally_frames, ally_frame_index,
+                                               ALLY_COUNT, ALLY_DISPLAY_W, ALLY_DISPLAY_H,
+                                               sr.centerx, sr.centery, ally[5])
             else:
                 pygame.draw.rect(screen, BLUE, sr)
 
@@ -1037,9 +1063,9 @@ def main():
         for pair in enemies:
             sr = rect_to_screen(pair[0], cam_x, cam_y)
             if USE_ENEMY:
-                draw_projectile_sprite(screen, enemy_frames, enemy_frame_index,
-                                       ENEMY_COUNT, ENEMY_DISPLAY_W, ENEMY_DISPLAY_H,
-                                       sr.centerx, sr.centery)
+                draw_projectile_sprite_rotated(screen, enemy_frames, enemy_frame_index,
+                                               ENEMY_COUNT, ENEMY_DISPLAY_W, ENEMY_DISPLAY_H,
+                                               sr.centerx, sr.centery, pair[5])
             else:
                 pygame.draw.rect(screen, RED, sr)
 
@@ -1080,6 +1106,7 @@ def main():
 
 
 def title_screen():
+    play_bgm(TITLE_BGM_PATH)
     font_title = get_korean_font(96)
     font_menu  = get_korean_font(48)
     font_hint  = get_korean_font(24)
