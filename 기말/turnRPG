@@ -1,0 +1,1437 @@
+"""
+턴제 RPG - 단일 파일 버전
+실행: python game.py
+"""
+
+import pygame
+import sys
+import json
+import os
+import random
+try:
+    from PIL import Image as PilImage
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
+
+def get_gif_duration_ms(path):
+    """GIF 파일의 총 재생시간(ms) 반환. Pillow 없으면 0 반환."""
+    if not _PIL_AVAILABLE or not os.path.exists(path):
+        return 0
+    try:
+        img = PilImage.open(path)
+        total = 0
+        while True:
+            total += img.info.get("duration", 100)
+            img.seek(img.tell() + 1)
+    except EOFError:
+        pass
+    return total
+
+
+def load_gif_frames(path):
+    """GIF를 pygame Surface 프레임 리스트와 ms 단위 지속시간 리스트로 반환.
+    파일 없으면 ([], []) 반환."""
+    if not _PIL_AVAILABLE or not os.path.exists(path):
+        return [], []
+    try:
+        pil_img = PilImage.open(path)
+        frames, durations = [], []
+        while True:
+            frame = pil_img.convert("RGBA")
+            w, h  = frame.size
+            data  = frame.tobytes()
+            surf  = pygame.image.fromstring(data, (w, h), "RGBA")
+            frames.append(surf)
+            durations.append(pil_img.info.get("duration", 100))
+            pil_img.seek(pil_img.tell() + 1)
+    except EOFError:
+        pass
+    return frames, durations
+
+
+# ═══════════════════════════════════════════════════════
+#  상수
+# ═══════════════════════════════════════════════════════
+SCREEN_WIDTH  = 1280
+SCREEN_HEIGHT = 720
+FPS           = 60
+FPS_OPTIONS   = [60, 120, 144, 165]
+TITLE         = "턴제 RPG"
+
+BLACK      = (0,   0,   0)
+WHITE      = (255, 255, 255)
+GRAY       = (100, 100, 100)
+DARK_GRAY  = (40,  40,  40)
+LIGHT_GRAY = (180, 180, 180)
+RED        = (200, 50,  50)
+DARK_RED   = (120, 20,  20)
+GREEN      = (50,  180, 80)
+DARK_GREEN = (20,  100, 40)
+BLUE       = (60,  120, 220)
+DARK_BLUE  = (20,  50,  130)
+YELLOW     = (230, 200, 50)
+ORANGE     = (220, 130, 40)
+PURPLE     = (150, 60,  200)
+CYAN       = (60,  200, 210)
+
+FONT_SMALL  = 16
+FONT_MEDIUM = 20
+FONT_LARGE  = 28
+FONT_TITLE  = 40
+
+STATE_MAIN   = "main"
+STATE_BATTLE = "battle"
+
+BSTATE_PLAYER_TURN = "player_turn"
+BSTATE_ENEMY_TURN  = "enemy_turn"
+
+PLAYER_BASE_HP    = 100
+PLAYER_BASE_SPEED = 10
+PLAYER_MAX_LEVEL  = 100
+MAX_SPECIALIZED   = 100
+MAX_BASE_STAT     = 50
+
+SAVE_PATH = os.path.join(os.path.dirname(__file__), "saves", "save.json")
+
+# ═══════════════════════════════════════════════════════
+#  UI 헬퍼
+# ═══════════════════════════════════════════════════════
+_fonts: dict = {}
+
+def init_fonts():
+    global _fonts
+    pygame.font.init()
+    _fonts = {
+        "small":  pygame.font.SysFont("malgun gothic", FONT_SMALL),
+        "medium": pygame.font.SysFont("malgun gothic", FONT_MEDIUM),
+        "large":  pygame.font.SysFont("malgun gothic", FONT_LARGE),
+        "title":  pygame.font.SysFont("malgun gothic", FONT_TITLE),
+    }
+
+def f(key): return _fonts[key]
+
+
+def draw_text(surf, text, font, color, x, y, max_width=None):
+    if max_width:
+        words, lines, line = text.split(" "), [], ""
+        for w in words:
+            test = line + w + " "
+            if font.size(test)[0] > max_width and line:
+                lines.append(line); line = w + " "
+            else:
+                line = test
+        lines.append(line)
+        for i, l in enumerate(lines):
+            img = font.render(l, True, color)
+            surf.blit(img, (x, y + i * (font.get_height() + 2)))
+        return len(lines) * (font.get_height() + 2)
+    img = font.render(text, True, color)
+    surf.blit(img, (x, y))
+    return font.get_height()
+
+
+def draw_text_centered(surf, text, font, color, cx, y):
+    """cx 기준 수평 중앙 정렬로 텍스트 그리기"""
+    img = font.render(text, True, color)
+    surf.blit(img, (cx - img.get_width()//2, y))
+    return img.get_height()
+
+
+def draw_bar(surf, x, y, w, h, val, max_val, fg, bg=DARK_GRAY):
+    pygame.draw.rect(surf, bg, (x, y, w, h))
+    fill = int(w * max(0, val) / max(1, max_val))
+    if fill: pygame.draw.rect(surf, fg, (x, y, fill, h))
+    pygame.draw.rect(surf, (80, 80, 80), (x, y, w, h), 1)
+
+
+def draw_panel(surf, x, y, w, h, alpha=200, color=(15, 15, 30)):
+    s = pygame.Surface((w, h), pygame.SRCALPHA)
+    s.fill((*color, alpha))
+    surf.blit(s, (x, y))
+    pygame.draw.rect(surf, (70, 70, 110), (x, y, w, h), 2)
+
+
+class Button:
+    def __init__(self, x, y, w, h, text, font_key="small",
+                 color=DARK_GRAY, hover_color=GRAY,
+                 text_color=WHITE, border_color=(100, 100, 160)):
+        self.rect        = pygame.Rect(x, y, w, h)
+        self.text        = text
+        self.font_key    = font_key
+        self.color       = color
+        self.hover_color = hover_color
+        self.text_color  = text_color
+        self.border_color= border_color
+        self.hovered     = False
+        self.enabled     = True
+
+    def draw(self, surf):
+        col = self.hover_color if (self.hovered and self.enabled) else self.color
+        if not self.enabled:
+            col = (25, 25, 35)
+        pygame.draw.rect(surf, col, self.rect, border_radius=6)
+        pygame.draw.rect(surf, self.border_color if self.enabled else GRAY,
+                         self.rect, 2, border_radius=6)
+        tc = self.text_color if self.enabled else GRAY
+        img = f(self.font_key).render(self.text, True, tc)
+        surf.blit(img, img.get_rect(center=self.rect.center))
+
+    def update(self, mouse):
+        self.hovered = self.rect.collidepoint(mouse)
+
+    def is_clicked(self, event):
+        return (self.enabled
+                and event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and self.rect.collidepoint(event.pos))
+
+
+class ScrollLog:
+    def __init__(self, x, y, w, h):
+        self.rect  = pygame.Rect(x, y, w, h)
+        self.lines = []
+        self.scroll= 0
+
+    def append(self, text):
+        for line in text.split("\n"):
+            self.lines.append(line)
+        lh = f("small").get_height() + 3
+        self.scroll = max(0, len(self.lines) * lh - self.rect.h)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(pygame.mouse.get_pos()):
+            lh = f("small").get_height() + 3
+            ms = max(0, len(self.lines) * lh - self.rect.h)
+            self.scroll = max(0, min(ms, self.scroll - event.y * lh))
+
+    def draw(self, surf):
+        clip = surf.get_clip()
+        surf.set_clip(self.rect)
+        lh = f("small").get_height() + 3
+        for i, line in enumerate(self.lines):
+            ry = self.rect.y + i * lh - int(self.scroll)
+            if ry + lh < self.rect.y or ry > self.rect.bottom:
+                continue
+            # 최신 줄일수록 밝게
+            age   = len(self.lines) - i
+            alpha = max(80, 255 - age * 18)
+            col   = (min(255, alpha), min(255, alpha), min(255, alpha))
+            img   = f("small").render(line, True, col)
+            surf.blit(img, (self.rect.x + 6, ry))
+        surf.set_clip(clip)
+
+
+# ═══════════════════════════════════════════════════════
+#  스킬 / 패시브
+# ═══════════════════════════════════════════════════════
+SKILL_PHYSICAL = "physical"
+SKILL_MAGICAL  = "magical"
+SKILL_BUFF     = "buff"
+SKILL_CHARGE   = "charge"
+
+
+class Skill:
+    def __init__(self, name, skill_type, base_power=0,
+                 hit_rate=1.0, mana_cost=0, description="", target="single",
+                 anim_path=None, hit_times=None):
+        self.name           = name
+        self.skill_type     = skill_type
+        self.base_power     = base_power
+        self.hit_rate       = hit_rate
+        self.mana_cost      = mana_cost
+        self.description    = description
+        self.target         = target
+        # 애니메이션
+        self.anim_path      = anim_path   # "assets/animations/xxx.gif"
+        self.animation_time = get_gif_duration_ms(anim_path) if anim_path else 0
+        self.hit_times      = hit_times or ([self.animation_time // 2]
+                                           if self.animation_time else [0])
+
+    def can_use(self, user):
+        return user.mana >= self.mana_cost
+
+    def calc_damage(self, user):
+        if self.skill_type == SKILL_PHYSICAL:
+            return self.base_power + (user.physical_level + getattr(user, "_tmp_phys", 0)) * 5
+        if self.skill_type == SKILL_MAGICAL:
+            return self.base_power + (user.magic_level + getattr(user, "_tmp_mag", 0)) * 5
+        return 0
+
+    def roll_hit(self, user, target):
+        uh  = self.hit_rate + getattr(user, "hit_bonus", 0) / 100
+        te  = getattr(target, "evasion", 0) / 100 + getattr(target, "_tmp_eva", 0) / 100
+        return random.random() < (uh - te)
+
+    def apply(self, user, targets):
+        results = []
+        user.mana = max(0, user.mana - self.mana_cost)
+
+        if self.skill_type in (SKILL_PHYSICAL, SKILL_MAGICAL):
+            for t in targets:
+                if self.roll_hit(user, t):
+                    dmg = max(1, self.calc_damage(user))
+                    t.hp = max(0, t.hp - dmg)
+                    results.append(("hit", t, dmg))
+                else:
+                    results.append(("miss", t, 0))
+
+        elif self.skill_type == SKILL_BUFF:
+            if self.name == "마력 집중":
+                user._tmp_mag   = getattr(user, "_tmp_mag", 0) + 10
+                user.hit_bonus  = getattr(user, "hit_bonus", 0) + 50
+            results.append(("buff", user, 0))
+
+        elif self.skill_type == SKILL_CHARGE:
+            rec = int(user.max_mana * 0.5)
+            user.mana = min(user.max_mana, user.mana + rec)
+            results.append(("charge", user, rec))
+
+        return results
+
+
+class Passive:
+    def __init__(self, name, description):
+        self.name        = name
+        self.description = description
+
+    def on_attacked(self, owner, attacker, skill): pass
+
+
+class PassiveFluid(Passive):
+    def __init__(self):
+        super().__init__("유체",
+            "물리 유형의 스킬로 공격당할 때, 해당 턴 동안 회피율이 50% 증가한다.")
+
+    def on_attacked(self, owner, attacker, skill):
+        if skill and skill.skill_type == SKILL_PHYSICAL:
+            owner._tmp_eva = getattr(owner, "_tmp_eva", 0) + 50
+
+
+# 스킬 인스턴스
+SK_SLASH = Skill(
+    "베기", SKILL_PHYSICAL, 5, 0.90, 0, "적을 벤다.",
+    anim_path="assets/animations/player_melee.gif",
+    # 베기 히트 타이밍 (ms) - 총 2820ms, 절반 지점에서 히트
+    hit_times=[1400],
+)
+SK_BULLET = Skill(
+    "마탄", SKILL_MAGICAL, 5, 0.50, 20, "마력으로 만든 탄환을 쏜다.",
+    anim_path=None,   # "assets/animations/magic_bullet.gif"
+    # 마탄 히트 타이밍 (ms)
+    hit_times=[400],
+)
+SK_FOCUS = Skill(
+    "마력 집중", SKILL_BUFF, 0, 1.00, 0, "마력을 집중. 다음 마법 강화+명중+50%.",
+    anim_path=None,   # "assets/animations/focus.gif"
+    # 마력 집중 히트 타이밍 (ms) - 버프라 피해 없음
+    hit_times=[],
+)
+SK_BODYSLAM = Skill(
+    "몸통박치기", SKILL_PHYSICAL, 5, 0.60, 0, "적을 들이받는다.",
+    anim_path=None,   # "assets/animations/bodyslam.gif"
+    # 몸통박치기 히트 타이밍 (ms)
+    hit_times=[300],
+)
+SK_MANACHARGE = Skill(
+    "마력 충전", SKILL_CHARGE, 0, 1.00, 0, "마력을 충전한다. 최대치의 50% 회복.",
+    anim_path=None,   # "assets/animations/mana_charge.gif"
+    # 마력 충전 히트 타이밍 (ms) - 충전이라 피해 없음
+    hit_times=[],
+)
+PASSIVE_FLUID = PassiveFluid()
+
+
+# ═══════════════════════════════════════════════════════
+#  엔티티
+# ═══════════════════════════════════════════════════════
+class Entity:
+    def __init__(self, name, hp, speed, physical_level, magic_level,
+                 hit_rate=0, evasion=0, mana=100):
+        self.name           = name
+        self.max_hp         = hp
+        self.hp             = hp
+        self.speed          = speed
+        self.physical_level = physical_level
+        self.magic_level    = magic_level
+        self.hit_bonus      = hit_rate
+        self.evasion        = evasion
+        self.max_mana       = mana
+        self.mana           = mana
+        self._tmp_phys = 0
+        self._tmp_mag  = 0
+        self._tmp_eva  = 0
+
+    @property
+    def alive(self): return self.hp > 0
+
+    def regen_mana(self):
+        self.mana = min(self.max_mana, self.mana + max(1, int(self.max_mana * 0.10)))
+
+    def reset_tmp(self):
+        self._tmp_phys = 0
+        self._tmp_mag  = 0
+        self._tmp_eva  = 0
+
+
+class Player(Entity):
+    def __init__(self, data=None):
+        if data:
+            self._load(data); return
+        super().__init__("플레이어", PLAYER_BASE_HP, PLAYER_BASE_SPEED, 0, 0, 0, 0, 100)
+        self.level         = 1
+        self.exp           = 0
+        self.exp_to_next   = 100
+        self.spec_points   = 10   # 레벨 1 초기 지급
+        self.base_points   = 10   # 레벨 1 초기 지급
+        self.stat_hp       = 0
+        self.stat_speed    = 0
+        self.stat_hit      = 0
+        self.stat_evasion  = 0
+        self.stat_physical = 0
+        self.stat_magic    = 0
+        self.skills        = [SK_SLASH, SK_BULLET, SK_FOCUS]
+        self.passives      = []
+        self.inventory     = []
+        self._load_anims()
+
+    def _load_anims(self):
+        """플레이어 GIF 애니메이션 로드 + 좌우 반전"""
+        BASE = "assets/animations"
+        self.anim_frames = {}
+        self.anim_durations = {}
+        for key, fname in [
+            ("idle",  "player_idle.gif"),
+            ("melee", "player_melee.gif"),
+            ("magic", "player_magic.gif"),
+        ]:
+            path = os.path.join(BASE, fname)
+            frames, durs = load_gif_frames(path)
+            # 좌우 반전
+            frames = [pygame.transform.flip(fr, True, False) for fr in frames]
+            self.anim_frames[key]    = frames
+            self.anim_durations[key] = durs
+        # 현재 재생 상태
+        self.anim_key     = "idle"
+        self.anim_frame   = 0
+        self.anim_elapsed = 0.0   # ms
+
+    def update_anim(self, dt_ms):
+        """dt_ms: 델타타임(ms). 프레임 전진."""
+        frames = self.anim_frames.get(self.anim_key, [])
+        durs   = self.anim_durations.get(self.anim_key, [])
+        if not frames: return
+        self.anim_elapsed += dt_ms
+        dur = durs[self.anim_frame] if self.anim_frame < len(durs) else 100
+        while self.anim_elapsed >= dur:
+            self.anim_elapsed -= dur
+            self.anim_frame = (self.anim_frame + 1) % len(frames)
+            dur = durs[self.anim_frame] if self.anim_frame < len(durs) else 100
+
+    def set_anim(self, key):
+        if self.anim_key != key:
+            self.anim_key     = key
+            self.anim_frame   = 0
+            self.anim_elapsed = 0.0
+
+    def get_anim_surface(self):
+        frames = self.anim_frames.get(self.anim_key, [])
+        if not frames: return None
+        return frames[self.anim_frame % len(frames)]
+
+    def _recalc(self):
+        self.max_hp         = PLAYER_BASE_HP + self.stat_hp * 10
+        self.hp             = min(self.hp, self.max_hp)
+        self.speed          = PLAYER_BASE_SPEED + self.stat_speed * 2
+        self.physical_level = self.stat_physical
+        self.magic_level    = self.stat_magic
+        self.hit_bonus      = min(10, self.stat_hit)
+        self.evasion        = min(10, self.stat_evasion)
+
+    def level_up(self):
+        self.level += 1; self.spec_points += 1; self.base_points += 1
+        self.exp_to_next = int(self.exp_to_next * 1.2)
+
+    def gain_exp(self, amount):
+        msgs = []
+        self.exp += amount
+        while self.exp >= self.exp_to_next and self.level < PLAYER_MAX_LEVEL:
+            self.exp -= self.exp_to_next
+            self.level_up(); self._recalc()
+            msgs.append(f"레벨 업! Lv.{self.level}")
+        return msgs
+
+    def invest_spec(self, stat):
+        if self.spec_points <= 0: return False
+        if stat == "physical" and self.stat_physical < MAX_SPECIALIZED:
+            self.stat_physical += 1
+        elif stat == "magic" and self.stat_magic < MAX_SPECIALIZED:
+            self.stat_magic += 1
+        else: return False
+        self.spec_points -= 1; self._recalc(); return True
+
+    def invest_base(self, stat):
+        if self.base_points <= 0: return False
+        m = {"hp":"stat_hp","speed":"stat_speed","hit":"stat_hit","evasion":"stat_evasion"}
+        a = m.get(stat)
+        if a and getattr(self, a) < MAX_BASE_STAT:
+            setattr(self, a, getattr(self, a) + 1)
+            self.base_points -= 1; self._recalc(); return True
+        return False
+
+    def to_dict(self):
+        return {k: getattr(self, k) for k in
+                ["hp","max_hp","mana","max_mana","speed","level","exp","exp_to_next",
+                 "spec_points","base_points","stat_hp","stat_speed","stat_hit",
+                 "stat_evasion","stat_physical","stat_magic","inventory"]}
+
+    def _load(self, d):
+        super().__init__("플레이어", d["hp"], d["speed"],
+                         d["stat_physical"], d["stat_magic"],
+                         d["stat_hit"], d["stat_evasion"], d["mana"])
+        for k in ["max_hp","max_mana","level","exp","exp_to_next","spec_points",
+                  "base_points","stat_hp","stat_speed","stat_hit","stat_evasion",
+                  "stat_physical","stat_magic"]:
+            setattr(self, k, d[k])
+        self.inventory = d.get("inventory", [])
+        self.skills = [SK_SLASH, SK_BULLET, SK_FOCUS]
+        self.passives = []
+        self._load_anims()
+
+
+class Enemy(Entity):
+    def __init__(self, tmpl, level=1):
+        self.template    = tmpl
+        self.enemy_level = level
+        self.base_exp    = tmpl["base_exp"]
+        phys, mag = self._calc_spec(tmpl, level)
+        hp = tmpl["base_hp"] + tmpl.get("hp_per_level", 5) * (level - 1)
+        super().__init__(tmpl["name"], hp, tmpl["base_speed"],
+                         phys, mag, tmpl.get("hit_rate", 0),
+                         tmpl.get("evasion", 0), tmpl.get("base_mana", 50))
+        self.max_mana = tmpl.get("base_mana", 50)
+        self.skills   = list(tmpl["skills"])
+        self.passives = list(tmpl["passives"])
+        self.info     = tmpl.get("info", "")
+
+    @staticmethod
+    def _calc_spec(tmpl, level):
+        phys, mag = tmpl["base_physical"], tmpl["base_magic"]
+        for lv in range(2, level + 1):
+            if lv % 5 == 0: mag += 1
+            else: phys += 1
+        return phys, mag
+
+    def choose_skill(self):
+        usable = [s for s in self.skills if s.name != "마력 충전" and s.can_use(self)]
+        return random.choice(usable) if usable else SK_MANACHARGE
+
+    def exp_reward(self): return self.base_exp * self.enemy_level
+
+    def trigger_on_attacked(self, attacker, skill):
+        for p in self.passives:
+            p.on_attacked(self, attacker, skill)
+
+
+SLIME_TMPL = {
+    "name": "슬라임", "base_hp": 20, "hp_per_level": 5,
+    "base_speed": 2, "base_physical": 2, "base_magic": 1,
+    "hit_rate": 0, "evasion": 0, "base_mana": 50, "base_exp": 10,
+    "skills": [SK_BODYSLAM, SK_MANACHARGE],
+    "passives": [PASSIVE_FLUID],
+    "info": "가장 흔히 보이는 몬스터 중 하나이다.\n\n어렵지 않은 적이나, 다양한 변종이 존재하니 방심은 금물이다.",
+    "color": (80, 140, 240), "shape": "circle",
+}
+MONSTER_POOL = [SLIME_TMPL]
+
+def spawn_enemy():
+    return Enemy(random.choice(MONSTER_POOL), random.randint(1, 5))
+
+
+# ═══════════════════════════════════════════════════════
+#  저장 / 불러오기
+# ═══════════════════════════════════════════════════════
+def save_game(player):
+    os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
+    with open(SAVE_PATH, "w", encoding="utf-8") as fp:
+        json.dump(player.to_dict(), fp, ensure_ascii=False, indent=2)
+
+def load_game():
+    if not os.path.exists(SAVE_PATH): return None
+    try:
+        with open(SAVE_PATH, "r", encoding="utf-8") as fp:
+            return Player(data=json.load(fp))
+    except Exception: return None
+
+
+# ═══════════════════════════════════════════════════════
+#  메인 화면
+# ═══════════════════════════════════════════════════════
+class MainScreen:
+    def __init__(self, screen, player):
+        self.screen = screen
+        self.player = player
+        bw, bh, cx = 240, 55, SCREEN_WIDTH // 2
+        self.btns = {
+            "explore":   Button(cx-bw//2, 180, bw, bh, "탐색",    "large"),
+            "inventory": Button(cx-bw//2, 255, bw, bh, "인벤토리", "large"),
+            "stats":     Button(cx-bw//2, 330, bw, bh, "능력치",   "large"),
+            "settings":  Button(cx-bw//2, 405, bw, bh, "설정",     "large"),
+            "save":      Button(cx-bw//2, 480, bw, bh, "저장",     "large"),
+            "quit":      Button(cx-bw//2, 555, bw, bh, "종료",     "large",
+                                DARK_RED, RED),
+        }
+        self.show_settings = False
+        pr = pygame.Rect(SCREEN_WIDTH//2 - SCREEN_WIDTH//4,
+                         SCREEN_HEIGHT//2 - SCREEN_HEIGHT//4,
+                         SCREEN_WIDTH//2, SCREEN_HEIGHT//2)
+        self.popup_rect     = pr
+        self.show_inventory = False
+        self.show_stats     = False
+        self.inv_log        = ScrollLog(pr.x+16, pr.y+50, pr.w-32, pr.h-70)
+        self.save_msg       = ""; self.save_timer = 0
+        self._build_stat_btns()
+
+    def _build_stat_btns(self):
+        r, pw = self.popup_rect, self.popup_rect.w
+        rx = r.x + pw - 70
+        self.sbtns = {
+            "physical": Button(rx, r.y+80,  28, 24, "+", "small", DARK_BLUE, BLUE),
+            "magic":    Button(rx, r.y+110, 28, 24, "+", "small", DARK_BLUE, BLUE),
+            "hp":       Button(rx, r.y+165, 28, 24, "+", "small", DARK_GREEN, GREEN),
+            "speed":    Button(rx, r.y+195, 28, 24, "+", "small", DARK_GREEN, GREEN),
+            "hit":      Button(rx, r.y+225, 28, 24, "+", "small", DARK_GREEN, GREEN),
+            "evasion":  Button(rx, r.y+255, 28, 24, "+", "small", DARK_GREEN, GREEN),
+        }
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.show_inventory = self.show_stats = self.show_settings = False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.show_inventory or self.show_stats or self.show_settings:
+                if not self.popup_rect.collidepoint(event.pos):
+                    self.show_inventory = self.show_stats = self.show_settings = False
+        if self.show_inventory:
+            return None
+        if self.show_settings:
+            # FPS 버튼 클릭
+            for fps_val, btn in self.fps_btns:
+                if btn.is_clicked(event):
+                    global FPS; FPS = fps_val
+            return None
+        if self.show_stats:
+            for k, b in self.sbtns.items():
+                if b.is_clicked(event):
+                    if k in ("physical","magic"): self.player.invest_spec(k)
+                    else: self.player.invest_base(k)
+            return None
+        for k, b in self.btns.items():
+            if b.is_clicked(event):
+                if k == "explore": return "explore"
+                if k == "inventory":
+                    self.show_inventory = True; self.show_stats = False; self.show_settings = False
+                    items = self.player.inventory
+                    self.inv_log.lines = []
+                    for it in (items or ["인벤토리가 비어있습니다."]): self.inv_log.append(it)
+                if k == "stats": self.show_stats = True; self.show_inventory = False; self.show_settings = False
+                if k == "settings": self.show_settings = True; self.show_inventory = False; self.show_stats = False
+                if k == "save":
+                    save_game(self.player)
+                    self.save_msg = "저장 완료!"; self.save_timer = 120
+                if k == "quit": return "quit"
+        return None
+
+    def update(self):
+        m = pygame.mouse.get_pos()
+        for b in self.btns.values(): b.update(m)
+        if self.show_stats:
+            for b in self.sbtns.values(): b.update(m)
+        if self.show_settings:
+            for _, b in self.fps_btns: b.update(m)
+        if self.save_timer > 0: self.save_timer -= 1
+
+    def draw(self):
+        s = self.screen
+        s.fill((12, 12, 25))
+        for i in range(0, SCREEN_WIDTH, 80):
+            pygame.draw.line(s, (20,20,40), (i,0), (i,SCREEN_HEIGHT))
+        for i in range(0, SCREEN_HEIGHT, 80):
+            pygame.draw.line(s, (20,20,40), (0,i), (SCREEN_WIDTH,i))
+
+        draw_text_centered(s, "◆ 턴제 RPG ◆", f("title"), YELLOW, SCREEN_WIDTH//2, 80)
+        for b in self.btns.values(): b.draw(s)
+
+        p = self.player
+        bx = SCREEN_WIDTH - 260
+        draw_text(s, f"Lv.{p.level}   EXP {p.exp}/{p.exp_to_next}",
+                  f("small"), LIGHT_GRAY, bx, SCREEN_HEIGHT-108)
+        draw_text(s, f"HP  {p.hp}/{p.max_hp}", f("small"), WHITE, bx, SCREEN_HEIGHT-88)
+        draw_bar(s, bx, SCREEN_HEIGHT-72, 240, 10, p.hp, p.max_hp, RED)
+        draw_text(s, f"MP  {p.mana}/{p.max_mana}", f("small"), WHITE, bx, SCREEN_HEIGHT-56)
+        draw_bar(s, bx, SCREEN_HEIGHT-40, 240, 10, p.mana, p.max_mana, BLUE)
+
+        if self.save_timer > 0:
+            img = f("medium").render(self.save_msg, True, GREEN)
+            img.set_alpha(min(255, self.save_timer * 4))
+            s.blit(img, (SCREEN_WIDTH//2 - img.get_width()//2, 160))
+
+        if self.show_inventory:
+            r = self.popup_rect
+            draw_panel(s, r.x, r.y, r.w, r.h)
+            draw_text(s, "인벤토리", f("large"), YELLOW, r.x+20, r.y+12)
+            self.inv_log.draw(s)
+            draw_text(s, "[ESC / 바깥 클릭으로 닫기]", f("small"), GRAY, r.x+10, r.bottom-22)
+
+        if self.show_stats:
+            self._draw_stats(s)
+        if self.show_settings:
+            self._draw_settings(s)
+
+    def _draw_settings(self, s):
+        r = self.popup_rect
+        draw_panel(s, r.x, r.y, r.w, r.h)
+        draw_text(s, "설정", f("large"), YELLOW, r.x+20, r.y+12)
+        draw_text(s, "FPS", f("medium"), CYAN, r.x+20, r.y+52)
+        # FPS 버튼 (현재 선택된 것 하이라이트)
+        self._build_fps_buttons()  # 색상 갱신
+        for fps_val, btn in self.fps_btns:
+            btn.color = DARK_BLUE if fps_val == FPS else DARK_GRAY
+            btn.draw(s)
+        draw_text(s, f"현재: {FPS} FPS", f("small"), LIGHT_GRAY, r.x+20, r.y+125)
+        draw_text(s, "[ESC / 바깥 클릭으로 닫기]", f("small"), GRAY, r.x+10, r.bottom-22)
+
+    def _draw_stats(self, s):
+        r, p = self.popup_rect, self.player
+        draw_panel(s, r.x, r.y, r.w, r.h)
+        draw_text(s, "능력치", f("large"), YELLOW, r.x+20, r.y+12)
+        lx = r.x + 20
+        draw_text(s, f"── 특화 능력치  (포인트: {p.spec_points})", f("small"), CYAN, lx, r.y+60)
+        draw_text(s, f"물리 레벨: {p.stat_physical} / {MAX_SPECIALIZED}", f("small"), WHITE, lx, r.y+80)
+        draw_text(s, f"마법 레벨: {p.stat_magic} / {MAX_SPECIALIZED}", f("small"), WHITE, lx, r.y+110)
+        draw_text(s, f"── 기초 능력치  (포인트: {p.base_points})", f("small"), GREEN, lx, r.y+145)
+        draw_text(s, f"체력:   {p.stat_hp}  (HP +{p.stat_hp*10})", f("small"), WHITE, lx, r.y+165)
+        draw_text(s, f"속도:   {p.stat_speed}", f("small"), WHITE, lx, r.y+195)
+        draw_text(s, f"명중률: {p.stat_hit}%", f("small"), WHITE, lx, r.y+225)
+        draw_text(s, f"회피율: {p.stat_evasion}%", f("small"), WHITE, lx, r.y+255)
+        draw_text(s, f"현재  HP {p.hp}/{p.max_hp}  SPD {p.speed}  MP {p.mana}/{p.max_mana}",
+                  f("small"), LIGHT_GRAY, lx, r.y+290)
+        draw_text(s, "[ESC / 바깥 클릭으로 닫기]", f("small"), GRAY, r.x+10, r.bottom-22)
+        for b in self.sbtns.values(): b.draw(s)
+
+
+# ═══════════════════════════════════════════════════════
+#  전투 화면
+# ═══════════════════════════════════════════════════════
+# 레이아웃 상수
+INFO_W   = 400    # 정보 패널 너비 (오버레이)
+ACTION_H = 240    # 하단 행동 패널 높이
+FIELD_H  = SCREEN_HEIGHT - ACTION_H  # 캐릭터 필드 높이
+ACT_SECT = SCREEN_WIDTH // 3         # 행동 패널 3등분 너비
+
+# 행동 탭
+TAB_SKILL = "skill"
+TAB_ITEM  = "item"
+TAB_RUN   = "run"
+
+
+class BattleScreen:
+    def __init__(self, screen, player):
+        self.screen = screen
+        self.player = player
+        self.enemies = [spawn_enemy()]
+        self.result  = None
+        self.exp_gain = 0
+        self.lv_msgs  = []
+
+        # 턴 순서
+        self.turn_order = sorted([player] + self.enemies, key=lambda e: -e.speed)
+        self.turn_index = 0
+        self.state = BSTATE_PLAYER_TURN if self._cur_is_player() else BSTATE_ENEMY_TURN
+
+        # 전투 로그 (하단 전체 너비)
+        self.log = ScrollLog(310, FIELD_H + 8, SCREEN_WIDTH - 320, ACTION_H - 16)
+
+        # 행동 탭
+        self.active_tab = TAB_SKILL
+        self.skill_btns : list[Button] = []
+        self._build_action_ui()
+
+        # 정보 오버레이 (클릭 시 표시)
+        self.info_target = None   # 선택된 유닛
+        self.info_tab    = "info"
+        self.info_tabs   = []
+        self._build_info_tabs()
+
+        # 결과 버튼
+        self.btn_continue = Button(
+            SCREEN_WIDTH//2-120, SCREEN_HEIGHT//2+60, 240, 50, "메인으로", "large"
+        )
+
+        # 키보드 커서 (언더테일 2단계)
+        self.kb_tab_idx    = 0      # 0=스킬 1=아이템 2=도망
+        self.kb_skill_idx  = 0
+        self.tab_selected  = False  # False=탭 선택 단계, True=항목 선택 단계
+
+        # 애니메이션 상태
+        self.anim_active    = False   # 스킬 애니메이션 재생 중
+        self.anim_skill     = None    # 현재 재생 중인 Skill
+        self.anim_elapsed   = 0.0     # 경과 ms
+        self.anim_targets   = []      # 피해 대상
+        self.anim_hits_done = set()   # 이미 처리한 hit_time 인덱스
+        self.anim_user      = None    # 스킬 사용자
+
+        self.log.append("전투 시작!")
+        self.log.append(self._turn_msg())
+
+    # ── 턴 관리 ──────────────────────────────────────────
+    def _cur(self):
+        alive = [e for e in self.turn_order if e.alive]
+        return alive[self.turn_index % len(alive)] if alive else None
+
+    def _cur_is_player(self):
+        return self._cur() is self.player
+
+    def _advance(self):
+        alive = [e for e in self.turn_order if e.alive]
+        if alive: self.turn_index = (self.turn_index + 1) % len(alive)
+
+    def _turn_msg(self):
+        c = self._cur()
+        if c is None: return ""
+        return "▶ 플레이어의 턴" if c is self.player else f"▶ {c.name} (Lv.{c.enemy_level})의 턴"
+
+    # ── UI 구성 ──────────────────────────────────────────
+    def _build_action_ui(self):
+        self.skill_btns.clear()
+        # 좌측 탭 메뉴: 세로 배치
+        # TAB_W: 좌측 탭 영역 너비 / 우측 콘텐츠 영역은 나머지
+        # 3등분 균등 배치
+        TAB_H  = (ACTION_H - 16) // 3
+        TAB_GAP = 4
+        tabs_list = [
+            (TAB_SKILL, "스킬"),
+            (TAB_ITEM,  "아이템"),
+            (TAB_RUN,   "도망"),
+        ]
+        self.tab_btns = {}
+        for i, (key, label) in enumerate(tabs_list):
+            ty = FIELD_H + 8 + i * (TAB_H + TAB_GAP)
+            self.tab_btns[key] = Button(4, ty, ACT_SECT - 8, TAB_H, label, "medium", DARK_GRAY, GRAY)
+        # 목록 버튼: 2번째 3등분
+        LIST_X = ACT_SECT
+        LIST_W = ACT_SECT - 8
+        sk_h, sk_gap = 44, 6
+        for i, sk in enumerate(self.player.skills):
+            col = DARK_BLUE if sk.skill_type in (SKILL_PHYSICAL, SKILL_MAGICAL) else DARK_GREEN
+            hov = BLUE      if sk.skill_type in (SKILL_PHYSICAL, SKILL_MAGICAL) else GREEN
+            lbl = sk.name
+            self.skill_btns.append(
+                Button(LIST_X, FIELD_H + 8 + i*(sk_h+sk_gap), LIST_W, sk_h, lbl, "medium", col, hov)
+            )
+        self.btn_run = Button(LIST_X, FIELD_H + 8, LIST_W, 54,
+                              "도망치기", "large", DARK_RED, RED)
+
+    def _build_info_tabs(self):
+        # 탭 위치는 draw 시 동적으로 계산 (좌/우 오버레이에 따라 달라짐)
+        self.info_tabs = [("info","정보"),("skills","스킬"),("passives","패시브")]
+
+    # ── 이벤트 ───────────────────────────────────────────
+    def handle_event(self, event):
+        if self.result:
+            if self.btn_continue.is_clicked(event): return "main"
+            return None
+
+        # 정보 오버레이가 열려있을 때
+        if self.info_target is not None:
+            # ESC or 정보창 바깥 클릭 → 닫기
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.info_target = None; return None
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                panel_rect = self._info_panel_rect()
+                if not panel_rect.collidepoint(event.pos):
+                    self.info_target = None; return None
+            # 탭 전환
+            for key, btn in self._info_tab_buttons():
+                if btn.is_clicked(event): self.info_tab = key
+            return None
+
+        # 유닛 클릭 → 정보 오버레이
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for i, e in enumerate(self.enemies):
+                if e.alive and self._enemy_rect(i).collidepoint(event.pos):
+                    self.info_target = e; self.info_tab = "info"; return None
+            if self._player_rect().collidepoint(event.pos):
+                self.info_target = self.player; self.info_tab = "info"; return None
+
+        if self.anim_active: return None   # 애니메이션 중 입력 차단
+        if self.state != BSTATE_PLAYER_TURN: return None
+
+        # 키보드 (언더테일 2단계)
+        tabs = [TAB_SKILL, TAB_ITEM, TAB_RUN]
+        if event.type == pygame.KEYDOWN:
+            if not self.tab_selected:
+                # ── 1단계: 탭 선택 (↑↓)
+                if event.key == pygame.K_UP:
+                    self.kb_tab_idx = (self.kb_tab_idx - 1) % 3
+                    self.active_tab = tabs[self.kb_tab_idx]
+                elif event.key == pygame.K_DOWN:
+                    self.kb_tab_idx = (self.kb_tab_idx + 1) % 3
+                    self.active_tab = tabs[self.kb_tab_idx]
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_RIGHT):
+                    if self.active_tab == TAB_RUN:
+                        self.result = "run"; self.log.append("도망쳤다!")
+                    elif self.active_tab in (TAB_SKILL, TAB_ITEM):
+                        self.tab_selected = True
+                        self.kb_skill_idx = 0
+            else:
+                # ── 2단계: 항목 선택 (↑↓, ESC/← 뒤로)
+                if event.key in (pygame.K_ESCAPE, pygame.K_LEFT):
+                    self.tab_selected = False
+                elif event.key == pygame.K_UP:
+                    if self.active_tab == TAB_SKILL:
+                        n = len(self.player.skills)
+                        if self.kb_skill_idx == 0: self.tab_selected = False
+                        else: self.kb_skill_idx -= 1
+                elif event.key == pygame.K_DOWN:
+                    if self.active_tab == TAB_SKILL:
+                        n = len(self.player.skills)
+                        self.kb_skill_idx = min(self.kb_skill_idx + 1, n - 1)
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    if self.active_tab == TAB_SKILL:
+                        self._use_skill(self.kb_skill_idx)
+                        self.tab_selected = False
+
+        # 마우스: 탭 클릭
+        for key, btn in self.tab_btns.items():
+            if btn.is_clicked(event):
+                if self.active_tab == key and not self.tab_selected:
+                    if key == TAB_RUN:
+                        self.result = "run"; self.log.append("도망쳤다!")
+                    else:
+                        self.tab_selected = True; self.kb_skill_idx = 0
+                else:
+                    self.active_tab = key
+                    self.kb_tab_idx = tabs.index(key)
+                    self.tab_selected = False
+
+        # 마우스: 항목 직접 클릭 (2단계 진입 상태일 때만)
+        if self.tab_selected and self.active_tab == TAB_SKILL:
+            for i, btn in enumerate(self.skill_btns):
+                if btn.is_clicked(event):
+                    self._use_skill(i); self.tab_selected = False; break
+
+        if self.tab_selected and self.active_tab == TAB_RUN:
+            if self.btn_run.is_clicked(event):
+                self.result = "run"; self.log.append("도망쳤다!")
+        return None
+
+    def _use_skill(self, idx):
+        sk = self.player.skills[idx]
+        if not sk.can_use(self.player):
+            self.log.append(f"마력 부족! ({sk.mana_cost}MP 필요)"); return
+        targets = [e for e in self.enemies if e.alive]
+        if not targets: return
+        self.log.append(f"플레이어가 {sk.name}을(를) 사용한다!")
+        for t in targets:
+            if isinstance(t, Enemy): t.trigger_on_attacked(self.player, sk)
+        # 플레이어 애니메이션 전환
+        if sk.skill_type == SKILL_PHYSICAL:
+            self.player.set_anim("melee")
+        elif sk.skill_type == SKILL_MAGICAL:
+            self.player.set_anim("magic")
+        # 애니메이션 시작 또는 즉시 처리
+        if sk.animation_time > 0:
+            self._start_skill_anim(sk, self.player, targets)
+        else:
+            results = sk.apply(self.player, targets)
+            self._log_results(self.player, sk, results)
+            self.player.reset_tmp()
+            for t in targets: t.reset_tmp()
+            self._check_end()
+            if not self.result: self._end_player_turn()
+
+    def _start_skill_anim(self, sk, user, targets):
+        self.anim_active    = True
+        self.anim_skill     = sk
+        self.anim_elapsed   = 0.0
+        self.anim_targets   = targets
+        self.anim_hits_done = set()
+        self.anim_user      = user
+        # 마나 선차감
+        user.mana = max(0, user.mana - sk.mana_cost)
+
+    def _update_skill_anim(self, dt_ms):
+        if not self.anim_active: return
+        self.anim_elapsed += dt_ms
+        sk      = self.anim_skill
+        user    = self.anim_user
+        targets = self.anim_targets
+        # hit_times 체크: 해당 타이밍 도달 시 피해 처리
+        for i, ht in enumerate(sk.hit_times):
+            if i not in self.anim_hits_done and self.anim_elapsed >= ht:
+                self.anim_hits_done.add(i)
+                results = []
+                if sk.skill_type in (SKILL_PHYSICAL, SKILL_MAGICAL):
+                    for t in targets:
+                        if t.alive:
+                            if sk.roll_hit(user, t):
+                                dmg = max(1, sk.calc_damage(user))
+                                t.hp = max(0, t.hp - dmg)
+                                results.append(("hit", t, dmg))
+                            else:
+                                results.append(("miss", t, 0))
+                elif sk.skill_type == SKILL_BUFF:
+                    if sk.name == "마력 집중":
+                        user._tmp_mag  = getattr(user, "_tmp_mag", 0) + 10
+                        user.hit_bonus = getattr(user, "hit_bonus", 0) + 50
+                    results.append(("buff", user, 0))
+                elif sk.skill_type == SKILL_CHARGE:
+                    rec = int(user.max_mana * 0.5)
+                    user.mana = min(user.max_mana, user.mana + rec)
+                    results.append(("charge", user, rec))
+                self._log_results(user, sk, results)
+        # 애니메이션 종료 체크
+        if self.anim_elapsed >= sk.animation_time:
+            self.anim_active = False
+            user.reset_tmp()
+            for t in targets: t.reset_tmp()
+            self.player.set_anim("idle")
+            self._check_end()
+            if not self.result: self._end_player_turn()
+
+    def _log_results(self, user, sk, results):
+        for kind, target, val in results:
+            if kind == "hit":   self.log.append(f"{user.name} → {target.name}에게 {val} 피해!")
+            elif kind == "miss": self.log.append(f"{user.name}의 공격... {target.name} 회피!")
+            elif kind == "buff": self.log.append(f"{user.name}이(가) {sk.name} 사용!")
+            elif kind == "charge": self.log.append(f"{user.name}이(가) 마력 충전! (+{val}MP)")
+
+    def _end_player_turn(self):
+        self._advance()
+        if not self._cur_is_player():
+            self.state = BSTATE_ENEMY_TURN
+            pygame.time.set_timer(pygame.USEREVENT + 1, 700)
+        else:
+            self._start_player_turn()
+
+    def _start_player_turn(self):
+        self.player.regen_mana()
+        self.state = BSTATE_PLAYER_TURN
+        self.log.append(self._turn_msg())
+
+    def _enemy_turn(self):
+        c = self._cur()
+        if c is None or not c.alive or c is self.player:
+            self._advance(); self._start_player_turn(); return
+        c.regen_mana()
+        sk = c.choose_skill()
+        results = sk.apply(c, [self.player])
+        self._log_results(c, sk, results)
+        c.reset_tmp(); self.player.reset_tmp()
+        self._check_end()
+        if not self.result:
+            self._advance()
+            if self._cur_is_player(): self._start_player_turn()
+            else: pygame.time.set_timer(pygame.USEREVENT + 1, 700)
+
+    def _check_end(self):
+        if not self.player.alive:
+            self.result = "defeat"; self.log.append("── 전투 패배 ──"); return
+        if all(not e.alive for e in self.enemies):
+            self.result = "victory"
+            total = sum(e.exp_reward() for e in self.enemies)
+            self.exp_gain = total
+            self.lv_msgs = self.player.gain_exp(total)
+            self.log.append(f"── 전투 승리! ({total} EXP) ──")
+            for m in self.lv_msgs: self.log.append(m)
+
+    def process_timer(self, event):
+        if event.type == pygame.USEREVENT + 1:
+            pygame.time.set_timer(pygame.USEREVENT + 1, 0)
+            if self.state == BSTATE_ENEMY_TURN and not self.result:
+                self._enemy_turn()
+
+    # ── 업데이트 ─────────────────────────────────────────
+    def update(self, dt_ms=0):
+        m = pygame.mouse.get_pos()
+        for b in self.tab_btns.values(): b.update(m)
+        for b in self.skill_btns: b.update(m)
+        self.btn_run.update(m)
+        if self.result: self.btn_continue.update(m)
+        # 델타타임 업데이트
+        self.player.update_anim(dt_ms)
+        if self.anim_active:
+            self._update_skill_anim(dt_ms)
+        # 정보 오버레이 탭 버튼 업데이트
+        if self.info_target is not None:
+            for _, btn in self._info_tab_buttons(): btn.update(m)
+        # 스킬 버튼 활/비활 (2단계 진입 시에만 활성)
+        for i, btn in enumerate(self.skill_btns):
+            btn.enabled = (i < len(self.player.skills) and
+                           self.player.skills[i].can_use(self.player) and
+                           self.state == BSTATE_PLAYER_TURN and
+                           self.info_target is None and
+                           self.tab_selected and self.active_tab == TAB_SKILL)
+        self.btn_run.enabled = (self.state == BSTATE_PLAYER_TURN and
+                                self.info_target is None and
+                                self.tab_selected and self.active_tab == TAB_RUN)
+
+    # ── 그리기 ───────────────────────────────────────────
+    def draw(self):
+        s = self.screen
+        s.fill((10, 10, 20))
+        pygame.draw.rect(s, (14, 14, 28), (0, 0, SCREEN_WIDTH, FIELD_H))
+        pygame.draw.line(s, (50, 50, 90), (0, FIELD_H), (SCREEN_WIDTH, FIELD_H), 2)
+
+        # 정보 오버레이 열려있으면: 확대 모드
+        if self.info_target is not None:
+            self._draw_inspect_mode(s)
+        else:
+            # 평소: 전체 필드 사용
+            draw_panel(s, 0, FIELD_H, SCREEN_WIDTH, ACTION_H, alpha=230, color=(8,8,20))
+            self._draw_player(s)
+            for i, e in enumerate(self.enemies): self._draw_enemy(s, e, i)
+            self._draw_action_panel(s)
+
+        if self.result: self._draw_result(s)
+
+    # ── 필드 캐릭터 위치 (전체 필드 기준) ────────────────
+    def _player_rect(self):
+        return pygame.Rect(SCREEN_WIDTH//8 - 40, FIELD_H//2 - 55, 80, 110)
+
+    def _enemy_rect(self, idx):
+        n    = len(self.enemies)
+        # 우측 절반에 배치
+        x0   = SCREEN_WIDTH * 3 // 5
+        x1   = SCREEN_WIDTH - 80
+        step = (x1 - x0) // (n + 1)
+        ex   = x0 + step * (idx + 1)
+        return pygame.Rect(ex - 45, FIELD_H//2 - 50, 90, 100)
+
+    def _draw_player(self, s):
+        p  = self.player
+        anim_surf = p.get_anim_surface()
+        # 원본 크기 사용, 없으면 기본 rect
+        if anim_surf:
+            w, h = anim_surf.get_size()
+            # 스킬 애니메이션 중이면 5배 확대
+            if self.anim_active:
+                w, h = w * 2, h * 2
+                anim_surf = pygame.transform.scale(anim_surf, (w, h))
+            bx_pos = SCREEN_WIDTH // 8 - w // 2
+            by_pos = FIELD_H // 2 - h // 2
+            s.blit(anim_surf, (bx_pos, by_pos))
+            cx = bx_pos + w // 2
+            bottom = by_pos + h
+        else:
+            r  = self._player_rect()
+            cx = r.centerx
+            bottom = r.bottom
+            pygame.draw.rect(s, (50, 160, 70), r, border_radius=10)
+            pygame.draw.rect(s, WHITE, r, 2, border_radius=10)
+            draw_text(s, "P", f("large"), WHITE, cx-11, r.centery-18)
+        by    = bottom + 4
+        bar_w = 120
+        bar_h = 8
+        bar_x = cx - bar_w // 2
+        bar_y = by + 20
+        hp_img = f("title").render(str(p.hp), True, RED)
+        s.blit(hp_img, (bar_x - hp_img.get_width() - 6, bar_y - hp_img.get_height()//2 + bar_h//2))
+        draw_bar(s, bar_x, bar_y, bar_w, bar_h, p.hp, p.max_hp, RED)
+        draw_text(s, "플레이어", f("medium"), WHITE, bar_x, bar_y + bar_h + 4)
+        # 현재 스킬 애니메이션 타임 표시 (플레이어 위)
+        if self.anim_active and self.anim_skill:
+            sk = self.anim_skill
+            remaining = max(0, sk.animation_time - self.anim_elapsed)
+            anim_text = f"anim: {sk.animation_time}ms  elapsed: {int(self.anim_elapsed)}ms  remaining: {int(remaining)}ms"
+            tw = f("small").size(anim_text)[0]
+            draw_text(s, anim_text, f("small"), YELLOW, cx - tw // 2, by - 60)
+
+    def _draw_enemy(self, s, enemy, idx):
+        r = self._enemy_rect(idx)
+        cx, cy = r.centerx, r.centery
+        col = enemy.template.get("color", GRAY)
+        if enemy.alive:
+            pygame.draw.circle(s, col, (cx, cy+5), 48)
+            pygame.draw.circle(s, WHITE, (cx, cy+5), 48, 2)
+            for ex2, ey2 in [(cx-14, cy-8),(cx+14, cy-8)]:
+                pygame.draw.circle(s, WHITE, (ex2,ey2), 9)
+                pygame.draw.circle(s, BLACK, (ex2,ey2), 4)
+            pygame.draw.arc(s, WHITE, (cx-12, cy+4, 24, 14), 3.14, 0, 2)
+        else:
+            pygame.draw.circle(s, DARK_GRAY, (cx, cy+5), 48, 3)
+            draw_text(s, "✕", f("large"), RED, cx-12, cy-15)
+        by = r.bottom + 4
+        bar_w = 120
+        bar_h = 8
+        bar_cx = cx  # 바의 중심 = 캐릭터 중심
+        bar_x = bar_cx - bar_w // 2
+        bar_y = by + 20
+        # 체력 수치: 바 왼쪽
+        hp_img = f("title").render(str(enemy.hp), True, RED)
+        s.blit(hp_img, (bar_x - hp_img.get_width() - 6, bar_y - hp_img.get_height()//2 + bar_h//2))
+        draw_bar(s, bar_x, bar_y, bar_w, bar_h, enemy.hp, enemy.max_hp, RED)
+        draw_text(s, f"Lv.{enemy.enemy_level} {enemy.name}", f("medium"), WHITE, bar_x, bar_y + bar_h + 4)
+
+    # ── 정보 오버레이 모드 ────────────────────────────────
+    def _info_panel_rect(self):
+        """정보 패널 rect: 적=우측, 플레이어=좌측"""
+        is_player = (self.info_target is self.player)
+        if is_player:
+            return pygame.Rect(0, 0, INFO_W, FIELD_H)
+        else:
+            return pygame.Rect(SCREEN_WIDTH - INFO_W, 0, INFO_W, FIELD_H)
+
+    def _info_tab_buttons(self):
+        """정보 탭 버튼 목록 (동적 위치)"""
+        pr  = self._info_panel_rect()
+        tw  = (INFO_W - 16) // 3
+        ix  = pr.x + 8
+        iy  = 56
+        btns = []
+        for i, (key, label) in enumerate(self.info_tabs):
+            btns.append((key, Button(ix + i*tw, iy, tw-3, 26, label, "small")))
+        return btns
+
+    def _draw_inspect_mode(self, s):
+        """유닛 클릭 시: 확대 + 정보 오버레이"""
+        t = self.info_target
+        is_player = (t is self.player)
+        pr = self._info_panel_rect()
+
+        # 확대된 유닛 위치
+        # 플레이어: 우측 중앙 / 적: 좌측 중앙
+        if is_player:
+            unit_cx = (SCREEN_WIDTH + INFO_W) // 2
+        else:
+            unit_cx = (SCREEN_WIDTH - INFO_W) // 2
+        unit_cy = FIELD_H // 2
+
+        # 확대 그리기
+        if is_player:
+            r = pygame.Rect(unit_cx - 60, unit_cy - 85, 120, 170)
+            pygame.draw.rect(s, (50, 160, 70), r, border_radius=14)
+            pygame.draw.rect(s, WHITE, r, 3, border_radius=14)
+            draw_text(s, "P", f("title"), WHITE, r.centerx-20, r.centery-28)
+            p = self.player
+            draw_bar(s, r.x-10, r.bottom+10, r.w+20, 14, p.hp,   p.max_hp,   RED)
+            draw_bar(s, r.x-10, r.bottom+28, r.w+20, 11, p.mana, p.max_mana, BLUE)
+            draw_text(s, f"HP {p.hp}/{p.max_hp}",    f("small"), LIGHT_GRAY, r.x-10, r.bottom+44)
+            draw_text(s, f"MP {p.mana}/{p.max_mana}", f("small"), (100,140,230), r.x-10, r.bottom+60)
+        else:
+            # 적 확대
+            col = t.template.get("color", GRAY)
+            pygame.draw.circle(s, col, (unit_cx, unit_cy), 80)
+            pygame.draw.circle(s, WHITE, (unit_cx, unit_cy), 80, 3)
+            for ex2, ey2 in [(unit_cx-22, unit_cy-14),(unit_cx+22, unit_cy-14)]:
+                pygame.draw.circle(s, WHITE, (ex2,ey2), 15)
+                pygame.draw.circle(s, BLACK, (ex2,ey2), 7)
+            pygame.draw.arc(s, WHITE, (unit_cx-20, unit_cy+8, 40, 22), 3.14, 0, 2)
+            draw_bar(s, unit_cx-70, unit_cy+90, 140, 12, t.hp,   t.max_hp,   RED)
+            draw_bar(s, unit_cx-70, unit_cy+106,140, 9,  t.mana, t.max_mana, BLUE)
+            draw_text(s, f"HP {t.hp}/{t.max_hp}",    f("small"), LIGHT_GRAY, unit_cx-70, unit_cy+118)
+            draw_text(s, f"MP {t.mana}/{t.max_mana}", f("small"), (100,140,230), unit_cx-70, unit_cy+134)
+
+        # 정보 패널 오버레이
+        draw_panel(s, pr.x, pr.y, pr.w, pr.h, alpha=230, color=(8,8,22))
+        # 헤더
+        header = (f"Lv.{t.enemy_level}  {t.name}" if isinstance(t, Enemy)
+                  else f"Lv.{t.level}  {t.name}")
+        draw_text(s, header, f("medium"), YELLOW, pr.x+12, pr.y+10)
+        draw_text(s, "ESC / 바깥 클릭 → 닫기", f("small"), GRAY, pr.x+12, pr.y+32)
+
+        # 탭 버튼
+        tab_btns = self._info_tab_buttons()
+        for key, btn in tab_btns:
+            btn.color       = DARK_BLUE if key == self.info_tab else DARK_GRAY
+            btn.hover_color = BLUE      if key == self.info_tab else GRAY
+            btn.draw(s)
+
+        lx = pr.x + 14
+        cy = 90
+
+        if self.info_tab == "info":
+            draw_bar(s, lx, cy, INFO_W-28, 12, t.hp,   t.max_hp,   RED);   cy+=13
+            draw_text(s, f"HP {t.hp}/{t.max_hp}",    f("small"), WHITE, lx, cy); cy+=20
+            draw_bar(s, lx, cy, INFO_W-28, 10, t.mana, t.max_mana, BLUE);  cy+=12
+            draw_text(s, f"MP {t.mana}/{t.max_mana}", f("small"), (100,140,230), lx, cy); cy+=26
+            draw_text(s, f"속도: {t.speed}",           f("small"), LIGHT_GRAY, lx, cy); cy+=20
+            draw_text(s, f"물리: {t.physical_level}  마법: {t.magic_level}",
+                      f("small"), LIGHT_GRAY, lx, cy); cy+=20
+            draw_text(s, f"명중: +{t.hit_bonus}%  회피: {t.evasion}%",
+                      f("small"), LIGHT_GRAY, lx, cy); cy+=28
+            pygame.draw.line(s, (60,60,90), (lx, cy), (pr.right-14, cy), 1); cy+=10
+            if isinstance(t, Enemy):
+                for line in t.info.split("\n"):
+                    cy += draw_text(s, line, f("small"), LIGHT_GRAY, lx, cy, INFO_W-28) + 4
+            else:
+                draw_text(s, f"EXP: {t.exp}/{t.exp_to_next}", f("small"), CYAN, lx, cy)
+
+        elif self.info_tab == "skills":
+            skills = t.skills if hasattr(t,"skills") else self.player.skills
+            for sk in skills:
+                if cy > FIELD_H - 20: break
+                draw_text(s, f"◆ {sk.name}", f("small"), YELLOW, lx, cy); cy+=18
+                cy += draw_text(s, f"  {sk.description}", f("small"), LIGHT_GRAY,
+                                lx, cy, INFO_W-28) + 2
+                info = f"  명중 {int(sk.hit_rate*100)}%"
+                if sk.mana_cost: info += f"  MP:{sk.mana_cost}"
+                draw_text(s, info, f("small"), CYAN, lx, cy); cy+=24
+
+        elif self.info_tab == "passives":
+            passives = getattr(t, "passives", [])
+            if passives:
+                for p2 in passives:
+                    draw_text(s, f"◆ {p2.name}", f("small"), PURPLE, lx, cy); cy+=18
+                    cy += draw_text(s, f"  {p2.description}", f("small"), LIGHT_GRAY,
+                                    lx, cy, INFO_W-28) + 10
+            else:
+                draw_text(s, "패시브 없음", f("small"), GRAY, lx, cy)
+
+        # 하단 행동 패널도 유지
+        draw_panel(s, 0, FIELD_H, SCREEN_WIDTH, ACTION_H, alpha=230, color=(8,8,20))
+        self._draw_action_panel(s)
+
+    # ── 하단 행동 패널 ────────────────────────────────────
+    def _draw_action_panel(self, s):
+        # 구분선 (3등분)
+        pygame.draw.line(s, (60,60,100), (ACT_SECT,   FIELD_H+4), (ACT_SECT,   SCREEN_HEIGHT-4), 1)
+        pygame.draw.line(s, (60,60,100), (ACT_SECT*2, FIELD_H+4), (ACT_SECT*2, SCREEN_HEIGHT-4), 1)
+
+        # 탭 버튼 (세로)
+        for key, btn in self.tab_btns.items():
+            active = (key == self.active_tab)
+            btn.color        = DARK_GRAY
+            btn.hover_color  = GRAY
+            btn.border_color = YELLOW if active else (80,80,120)
+            btn.draw(s)
+
+        # 우측 콘텐츠 영역
+        if not self.tab_selected:
+            pass
+        else:
+            if self.active_tab == TAB_SKILL:   self._draw_skill_tab(s)
+            elif self.active_tab == TAB_ITEM:  self._draw_item_tab(s)
+            elif self.active_tab == TAB_RUN:   self._draw_run_tab(s)
+
+
+    def _draw_skill_tab(self, s):
+        LIST_X = ACT_SECT
+        DESC_X = ACT_SECT * 2
+        DESC_W = SCREEN_WIDTH - DESC_X - 8
+        for i, btn in enumerate(self.skill_btns):
+            if i == self.kb_skill_idx:
+                pygame.draw.rect(s, YELLOW, btn.rect.inflate(4,4), 2, border_radius=8)
+            btn.draw(s)
+        # 선택된 스킬 설명 우측 표시
+        idx = self.kb_skill_idx
+        # 호버 우선, 없으면 kb 커서
+        hov_idx = next((i for i, b in enumerate(self.skill_btns) if b.hovered), -1)
+        if hov_idx >= 0 and hov_idx < len(self.player.skills):
+            sk = self.player.skills[hov_idx]
+        elif idx < len(self.player.skills):
+            sk = self.player.skills[idx]
+        else:
+            sk = None
+        if sk:
+            cy = FIELD_H + 14
+            dx = DESC_X + 8
+            draw_text(s, sk.name, f("medium"), YELLOW, dx, cy);                        cy += 28
+            draw_text(s, sk.description, f("small"), LIGHT_GRAY, dx, cy, DESC_W);      cy += 24
+            draw_text(s, f"명중률  {int(sk.hit_rate*100)}%", f("small"), CYAN, dx, cy); cy += 20
+            if sk.mana_cost:
+                draw_text(s, f"소모 MP  {sk.mana_cost}", f("small"), (100,140,230), dx, cy); cy += 20
+            type_name = {"physical":"물리","magical":"마법","buff":"버프","charge":"충전"}.get(sk.skill_type,"")
+            draw_text(s, f"유형  {type_name}", f("small"), LIGHT_GRAY, dx, cy)
+
+    def _draw_item_tab(self, s):
+        LIST_X = ACT_SECT
+        DESC_X = ACT_SECT * 2
+        if not self.player.inventory:
+            draw_text_centered(s, "아이템이 없습니다.", f("small"), GRAY,
+                               LIST_X + ACT_SECT//2, FIELD_H + ACTION_H//2 - 10)
+        else:
+            for i, item in enumerate(self.player.inventory):
+                draw_text(s, f"• {item}", f("small"), WHITE, LIST_X + 4, FIELD_H+14+i*30)
+
+    def _draw_run_tab(self, s):
+        LIST_X = ACT_SECT
+        DESC_X = ACT_SECT * 2
+        DESC_W = SCREEN_WIDTH - DESC_X - 8
+        self.btn_run.draw(s)
+        cy = FIELD_H + 14
+        dx = DESC_X + 8
+        draw_text(s, "도망치기", f("medium"), RED, dx, cy);                       cy += 28
+        draw_text(s, "전투에서 도망칩니다.", f("small"), LIGHT_GRAY, dx, cy);      cy += 22
+        draw_text(s, "경험치를 획득하지 못합니다.", f("small"), GRAY, dx, cy)
+
+    # ── 결과 오버레이 ─────────────────────────────────────
+    def _draw_result(self, s):
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0,0,0,170)); s.blit(ov, (0,0))
+        cx = SCREEN_WIDTH // 2
+        cy = SCREEN_HEIGHT // 2
+        if self.result == "victory":
+            draw_text_centered(s, "✦ 전투 승리 ✦", f("title"), YELLOW, cx, cy-90)
+            draw_text_centered(s, f"획득 EXP: {self.exp_gain}", f("large"), CYAN, cx, cy-30)
+            for i, m in enumerate(self.lv_msgs):
+                draw_text_centered(s, m, f("medium"), GREEN, cx, cy+10+i*30)
+        elif self.result == "defeat":
+            draw_text_centered(s, "✦ 전투 패배 ✦", f("title"), RED, cx, cy-70)
+        elif self.result == "run":
+            draw_text_centered(s, "도망쳤다...", f("title"), GRAY, cx, cy-70)
+        self.btn_continue.draw(s)
+
+
+# ═══════════════════════════════════════════════════════
+#  메인 루프
+# ═══════════════════════════════════════════════════════
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption(TITLE)
+    init_fonts()
+    clock = pygame.time.Clock()
+
+    player = load_game() or Player()
+    state  = STATE_MAIN
+    scene  = MainScreen(screen, player)
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+
+            if isinstance(scene, BattleScreen):
+                scene.process_timer(event)
+
+            result = scene.handle_event(event)
+
+            if state == STATE_MAIN:
+                if result == "explore":
+                    player.hp   = player.max_hp
+                    player.mana = player.max_mana
+                    state = STATE_BATTLE
+                    scene = BattleScreen(screen, player)
+                elif result == "quit":
+                    pygame.quit(); sys.exit()
+
+            elif state == STATE_BATTLE:
+                if result == "main":
+                    player.hp   = player.max_hp
+                    player.mana = player.max_mana
+                    state = STATE_MAIN
+                    scene = MainScreen(screen, player)
+
+        dt_ms = clock.tick(FPS)   # 델타타임 (ms)
+        if isinstance(scene, BattleScreen):
+            scene.update(dt_ms)
+        else:
+            scene.update()
+        scene.draw()
+        pygame.display.flip()
+
+
+if __name__ == "__main__":
+    main()
