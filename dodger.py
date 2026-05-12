@@ -6,6 +6,16 @@ import io
 import os
 import math
 
+
+def resource_path(relative_path):
+    # """개발 중과 빌드 후 모두 동작하는 경로 반환"""
+    if hasattr(sys, '_MEIPASS'):
+        base = sys._MEIPASS
+    else:
+        base = os.path.dirname(__file__)
+    return os.path.join(base, relative_path)
+
+
 pygame.init()
 pygame.mixer.init()
 
@@ -102,10 +112,10 @@ corner_parry_sfx = load_sound_b64(CORNER_PARRY_SFX_B64, 0.25)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BGM_VOLUME = 0.1
 
-TITLE_BGM_PATH    = "assets/sounds/title_bgm.wav"
-GAME_BGM_PATH     = "assets/sounds/game_bgm.mp3"
-GAMEOVER_BGM_PATH = "assets/sounds/gameover_bgm.wav"
-CLEAR_BGM_PATH    = "assets/sounds/clear_bgm.wav"
+TITLE_BGM_PATH    = resource_path("assets/sounds/title_bgm.wav")
+GAME_BGM_PATH     = resource_path("assets/sounds/game_bgm.mp3")
+GAMEOVER_BGM_PATH = resource_path("assets/sounds/gameover_bgm.wav")
+CLEAR_BGM_PATH    = resource_path("assets/sounds/clear_bgm.wav")
 
 def play_bgm(path):
     if not os.path.exists(path):
