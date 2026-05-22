@@ -38,7 +38,6 @@ def draw_text(surf, text, font, color, cx, cy):
 
 
 def draw_text_left(surf, text, font, color, x, cy):
-    """좌측 정렬 텍스트"""
     img = font.render(text, True, color)
     surf.blit(img, img.get_rect(midleft=(x, cy)))
 
@@ -80,13 +79,15 @@ COMPENDIUM = {
             ]
         },
         "중앙": {
-            "왕국기사단": {
+            "왕국 기사단": {
                 "기사단장": {
                     "image": "assets/knight_leader.png",
                     "description": [
                         "이름: 미정",
-                        "소속: 왕국기사단",
-                        "설명: 준비 중입니다.",
+                        "소속: 왕국 기사단",
+                        "설명: 왕국 기사단의 단장입니다.",
+                        "젊지만 실력은 확실한 강자입니다.",
+                        "레벨 100 | 물리 레벨 100 | 마력 레벨 100"
                     ]
                 }
             }
@@ -381,13 +382,12 @@ class GalleryScreen:
         for i, item in enumerate(self.ITEMS):
             cy  = self._cy(i)
             sel = (i == self.selected)
-            if i == 0:  # 스토리 컷신 미구현
-                draw_text(surf, item, self.fonts["menu"], GRAY, W // 2, cy)
+            r   = pygame.Rect(W // 2 - 150, cy - 22, 300, 44)
+            if sel:
+                pygame.draw.rect(surf, BLACK, r)
+                draw_text(surf, item, self.fonts["menu"], WHITE, W // 2, cy)
             else:
-                draw_text(surf, item, self.fonts["menu"], BLACK if sel else GRAY_D, W // 2, cy)
-            if sel and i != 0:
-                pygame.draw.rect(surf, BLACK,
-                    pygame.Rect(W // 2 - 150, cy - 22, 300, 44), 1)
+                draw_text(surf, item, self.fonts["menu"], BLACK, W // 2, cy)
 
         draw_text(surf, "↑↓  이동     Enter  선택     Esc  돌아가기",
                   self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.05))
@@ -397,18 +397,17 @@ class GalleryScreen:
 #   적 도감 — 메뉴 화면 (공통 베이스)
 # ══════════════════════════════════════════════════════════════════
 class CompendiumMenuScreen:
-    """항목 목록을 보여주는 범용 메뉴. None 항목은 미구현으로 표시."""
+    """항목 목록을 보여주는 범용 메뉴."""
 
     def __init__(self, screen, W, H, fonts, title, items):
         self.screen   = screen
         self.W, self.H = W, H
         self.fonts    = fonts
         self.title    = title
-        self.items    = items   # [(표시명, 값 or None), ...]
+        self.items    = items
         self.selected = 0
 
     def handle_event(self, event):
-        active = [i for i, (_, v) in enumerate(self.items) if v is not None]
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_UP, pygame.K_w):
                 self.selected = (self.selected - 1) % len(self.items)
@@ -452,13 +451,12 @@ class CompendiumMenuScreen:
         for i, (name, val) in enumerate(self.items):
             cy  = self._cy(i)
             sel = (i == self.selected)
-            if val is None:
-                draw_text(surf, f"{name}  (미구현)", self.fonts["menu"], GRAY, W // 2, cy)
+            r   = pygame.Rect(W // 2 - 150, cy - 22, 300, 44)
+            if sel:
+                pygame.draw.rect(surf, BLACK, r)
+                draw_text(surf, name, self.fonts["menu"], WHITE, W // 2, cy)
             else:
-                draw_text(surf, name, self.fonts["menu"], BLACK if sel else GRAY_D, W // 2, cy)
-                if sel:
-                    pygame.draw.rect(surf, BLACK,
-                        pygame.Rect(W // 2 - 150, cy - 22, 300, 44), 1)
+                draw_text(surf, name, self.fonts["menu"], BLACK, W // 2, cy)
 
         draw_text(surf, "↑↓  이동     Enter  선택     Esc  돌아가기",
                   self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.05))
@@ -474,7 +472,7 @@ class CompendiumDetailScreen:
         self.screen = screen
         self.W, self.H = W, H
         self.fonts  = fonts
-        self.entry  = entry   # {"image": "...", "description": [...]}
+        self.entry  = entry
         self.image  = None
         self._load_image()
 
@@ -483,11 +481,10 @@ class CompendiumDetailScreen:
         if os.path.exists(path):
             try:
                 img = pygame.image.load(path).convert_alpha()
-                # 좌측 영역 크기에 맞게 비율 유지 축소
                 max_w = int(self.W * 0.35)
                 max_h = int(self.H * 0.7)
                 iw, ih = img.get_size()
-                scale = min(max_w / iw, max_h / ih, 1.0)
+                scale = min(max_w / iw, max_h / ih)
                 self.image = pygame.transform.smoothscale(
                     img, (int(iw * scale), int(ih * scale))
                 )
@@ -509,7 +506,6 @@ class CompendiumDetailScreen:
         surf = self.screen
         surf.fill(WHITE)
 
-        # ── 좌측: 이미지 영역 ──────────────────────────────────────
         img_area_cx = int(W * 0.25)
         img_area_cy = int(H * 0.5)
 
@@ -517,17 +513,14 @@ class CompendiumDetailScreen:
             r = self.image.get_rect(center=(img_area_cx, img_area_cy))
             surf.blit(self.image, r)
         else:
-            # 이미지 없을 때 빈 박스
             box = pygame.Rect(int(W * 0.05), int(H * 0.15), int(W * 0.38), int(H * 0.7))
             pygame.draw.rect(surf, GRAY, box)
             draw_text(surf, "이미지 없음", self.fonts["menu"], GRAY_D, img_area_cx, img_area_cy)
 
-        # 구분선
         pygame.draw.line(surf, BLACK,
             (int(W * 0.45), int(H * 0.1)),
             (int(W * 0.45), int(H * 0.9)), 1)
 
-        # ── 우측: 설명 영역 ──────────────────────────────────────
         desc = self.entry.get("description", [])
         rx   = int(W * 0.5)
         ry   = int(H * 0.25)
@@ -670,7 +663,6 @@ def main():
     settings_sc  = None
     gallery_sc   = None
 
-    # 도감 화면 스택 — 여러 단계 메뉴를 쌓아서 Esc로 되돌아오게
     comp_stack   = []
 
     def push_comp(screen_obj):
@@ -690,14 +682,12 @@ def main():
             if event.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
 
-            # ── 종료 다이얼로그 ────────────────────────────────────
             if overlay == "quit":
                 r = quit_dlg.handle_event(event)
                 if r == "yes":  pygame.quit(); sys.exit()
                 elif r == "no": overlay = None
                 continue
 
-            # ── 도감 스택 ─────────────────────────────────────────
             if current == "compendium" and comp_stack:
                 top = comp_top()
                 r   = top.handle_event(event)
@@ -716,20 +706,17 @@ def main():
                         if not comp_stack:
                             current = "gallery"
                     elif r[0] == "select":
-                        val = r[1]
-                        # val이 dict(엔트리)면 상세화면, dict(서브메뉴)면 메뉴화면
+                        val  = r[1]
+                        name = top.items[top.selected][0]  # 선택한 항목 이름
                         if isinstance(val, dict) and "image" in val:
                             push_comp(CompendiumDetailScreen(screen, W, H, fonts, val))
                         elif isinstance(val, dict):
-                            # 서브메뉴 딕셔너리 → 메뉴화면으로
                             items = [(k, v) for k, v in val.items()]
-                            # 현재 선택한 이름을 타이틀로
-                            push_comp(CompendiumMenuScreen(screen, W, H, fonts, list(val.keys())[0] if len(val)==1 else "목록", items))
+                            push_comp(CompendiumMenuScreen(screen, W, H, fonts, name, items))
                         elif val is None:
                             pass
                 continue
 
-            # ── 타이틀 ────────────────────────────────────────────
             if current == "title":
                 a = title.handle_event(event)
                 if a == "quit":
@@ -761,7 +748,6 @@ def main():
                     placeholder = PlaceholderScreen(screen, W, H, fonts, "스토리 컷신")
                     current = "placeholder"
                 elif r == "compendium":
-                    # 도감 최상위: 인간/마족/마물
                     comp_stack.clear()
                     top_items = [(k, v) for k, v in COMPENDIUM.items()]
                     push_comp(CompendiumMenuScreen(screen, W, H, fonts, "적 도감", top_items))
@@ -772,7 +758,6 @@ def main():
                 if r == "back":
                     current = "title"
 
-        # ── update ────────────────────────────────────────────────
         if current == "title":          title.update(dt)
         elif current == "settings":     settings_sc.update(dt)
         elif current == "gallery":      gallery_sc.update(dt)
@@ -781,7 +766,6 @@ def main():
         elif current == "placeholder":  placeholder.update(dt)
         if overlay == "quit":           quit_dlg.update(dt)
 
-        # ── draw ──────────────────────────────────────────────────
         if current == "title":          title.draw()
         elif current == "settings":     settings_sc.draw()
         elif current == "gallery":      gallery_sc.draw()
