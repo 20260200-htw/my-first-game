@@ -73,9 +73,9 @@ COMPENDIUM = {
         "주인공": {
             "image": "assets/main_character.png",
             "description": [
-                "이름: 미정",
-                "소속: 미정",
-                "설명: 준비 중입니다.",
+                "이름: 주인공",
+                "소속: 지구",
+                "이야기의 주인공이 되기 전 당신입니다.",
             ]
         },
         "중앙": {
@@ -83,11 +83,13 @@ COMPENDIUM = {
                 "기사단장": {
                     "image": "assets/knight_leader.png",
                     "description": [
-                        "이름: 미정",
+                        "이름: 벨라",
+                        "나이: 21",
+                        "신장: 177cm",
                         "소속: 왕국 기사단",
                         "직위: 기사단장",
-                        "설명: 왕국 기사단의 단장입니다.",
-                        "아직 젊지만 실력은 확실한 강자입니다.",
+                        "중앙 왕국 기사단의 젊은 단장입니다.",
+                        "이 세계에서 가장 강한 이들 중 하나입니다.",
                         "레벨 100 | 물리 레벨 100 | 마력 레벨 100"
                     ]
                 }
@@ -341,7 +343,6 @@ class GalleryScreen:
         self.selected = 0
 
     def handle_event(self, event):
-        last = len(self.ITEMS) - 1
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_UP, pygame.K_w):
                 self.selected = (self.selected - 1) % len(self.ITEMS)
@@ -496,8 +497,6 @@ class CompendiumDetailScreen:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 return "back"
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            return "back"
         return None
 
     def update(self, dt): pass
@@ -529,7 +528,7 @@ class CompendiumDetailScreen:
         for i, line in enumerate(desc):
             draw_text_left(surf, line, self.fonts["menu"], BLACK, rx, ry + i * gap)
 
-        draw_text(surf, "Esc / 클릭  돌아가기",
+        draw_text(surf, "Esc  돌아가기",
                   self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.05))
 
 
@@ -544,8 +543,7 @@ class PlaceholderScreen:
         self.label = label
 
     def handle_event(self, event):
-        if event.type == pygame.KEYDOWN:         return "back"
-        if event.type == pygame.MOUSEBUTTONDOWN: return "back"
+        if event.type == pygame.KEYDOWN: return "back"
         return None
 
     def update(self, dt): pass
@@ -708,7 +706,7 @@ def main():
                             current = "gallery"
                     elif r[0] == "select":
                         val  = r[1]
-                        name = top.items[top.selected][0]  # 선택한 항목 이름
+                        name = top.items[top.selected][0]
                         if isinstance(val, dict) and "image" in val:
                             push_comp(CompendiumDetailScreen(screen, W, H, fonts, val))
                         elif isinstance(val, dict):
