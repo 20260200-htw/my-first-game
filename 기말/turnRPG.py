@@ -19,6 +19,8 @@ WHITE  = (255, 255, 255)
 BLACK  = (0,   0,   0)
 GRAY   = (180, 180, 180)
 GRAY_D = (100, 100, 100)
+RED    = (200,  40,  40)
+GREEN  = ( 40, 180,  40)
 
 # ── 설정 ──────────────────────────────────────────────────────────
 settings = {
@@ -66,6 +68,68 @@ def apply_resolution():
 
 
 # ══════════════════════════════════════════════════════════════════
+#   캐릭터 데이터 정의
+# ══════════════════════════════════════════════════════════════════
+ENEMY_DEFS = {
+    "벨라": {
+        "title":       "왕국 기사단장",
+        "name":        "벨라",
+        "type":        "boss",
+        "level":       100,
+        "phys_level":  100,
+        "magic_level": 100,
+        "hp_max":      10000,
+        "sprite":      "assets/knight_leader.png",
+    },
+}
+
+ALLY_DEFS = {
+    "주인공": {
+        "name":        "주인공",
+        "type":        "player",
+        "level":       10,
+        "phys_level":  10,
+        "magic_level": 10,
+        "hp_max":      100,
+        "sprite":      "assets/main_character.png",
+    },
+}
+
+
+# ══════════════════════════════════════════════════════════════════
+#   전투 참가자 인스턴스
+# ══════════════════════════════════════════════════════════════════
+class Combatant:
+    def __init__(self, defn, W, H, max_sprite_w, max_sprite_h):
+        self.defn        = defn
+        self.title       = defn.get("title", "")
+        self.name        = defn["name"]
+        self.ctype       = defn["type"]
+        self.level       = defn.get("level", 1)
+        self.phys_level  = defn.get("phys_level", 0)
+        self.magic_level = defn.get("magic_level", 0)
+        self.hp_max      = defn["hp_max"]
+        self.hp          = defn["hp_max"]
+        self.sprite      = None
+        self.sprite_orig = None
+        self._load_sprite(defn["sprite"], max_sprite_w, max_sprite_h)
+
+    def _load_sprite(self, path, max_w, max_h):
+        if os.path.exists(path):
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                self.sprite_orig = img
+                iw, ih = img.get_size()
+                scale = min(max_w / iw, max_h / ih)
+                self.sprite = pygame.transform.smoothscale(
+                    img, (int(iw * scale), int(ih * scale))
+                )
+            except Exception:
+                self.sprite = None
+                self.sprite_orig = None
+
+
+# ══════════════════════════════════════════════════════════════════
 #   도감 데이터
 # ══════════════════════════════════════════════════════════════════
 COMPENDIUM = {
@@ -73,13 +137,9 @@ COMPENDIUM = {
         "주인공": {
             "image": "assets/main_character.png",
             "description": [
-                "이름: 주인공",
-                "성별: 남성 혹은 여성",
-                "나이: 22",
-                "신장: (지구) 178cm / (판타지아) 164cm",
-                "소속: 지구",
-                "어느 이야기의 주인공이 되기 전 당신입니다.",
-                "또다른 세계 '판타지아'의 이야기를 시작합니다."
+                "이름: 미정",
+                "소속: 미정",
+                "설명: 준비 중입니다.",
             ]
         },
         "중앙": {
@@ -88,14 +148,13 @@ COMPENDIUM = {
                     "image": "assets/knight_leader.png",
                     "description": [
                         "이름: 벨라",
-                        "성별: 여성",
                         "나이: 21",
-                        "신장: 170cm",
+                        "신장: 177cm",
                         "소속: 왕국 기사단",
                         "직위: 기사단장",
-                        "왕국 기사단의 젊은 단장입니다.",
-                        "'판타지아'의 최강자 중 한 명입니다.",
-                        "레벨 100 | 물리 레벨 100 | 마력 레벨 100"
+                        "설명: 왕국 기사단의 최연소 단장입니다.",
+                        "판타지아의 가장 강한 이들 중 하나입니다.",
+                        "능력치: 레벨 100 | P 100 | M 100"
                     ]
                 }
             }
@@ -128,6 +187,7 @@ class TitleScreen:
             pygame.Rect(W // 2 - 150, start_y + i * gap - 22, 300, 44)
             for i in range(len(self.ITEMS))
         ]
+        self.battle_btn = pygame.Rect(W - int(W * 0.18), H - int(H * 0.1), int(W * 0.15), int(H * 0.06))
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
@@ -142,6 +202,8 @@ class TitleScreen:
                 if r.collidepoint(event.pos):
                     self.selected = i
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.battle_btn.collidepoint(event.pos):
+                return "battle_test"
             for i, r in enumerate(self.rects):
                 if r.collidepoint(event.pos):
                     self.selected = i
@@ -174,6 +236,10 @@ class TitleScreen:
 
         draw_text(surf, "↑↓  이동     Enter / 클릭  선택",
                   self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.05))
+
+        pygame.draw.rect(surf, BLACK, self.battle_btn)
+        draw_text(surf, "전투 테스트", self.fonts["hint"], WHITE,
+                  self.battle_btn.centerx, self.battle_btn.centery)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -401,11 +467,9 @@ class GalleryScreen:
 
 
 # ══════════════════════════════════════════════════════════════════
-#   적 도감 — 메뉴 화면 (공통 베이스)
+#   적 도감 — 메뉴 화면
 # ══════════════════════════════════════════════════════════════════
 class CompendiumMenuScreen:
-    """항목 목록을 보여주는 범용 메뉴."""
-
     def __init__(self, screen, W, H, fonts, title, items):
         self.screen   = screen
         self.W, self.H = W, H
@@ -473,8 +537,6 @@ class CompendiumMenuScreen:
 #   적 도감 — 상세 화면
 # ══════════════════════════════════════════════════════════════════
 class CompendiumDetailScreen:
-    """이미지(좌) + 설명(우) 레이아웃"""
-
     def __init__(self, screen, W, H, fonts, entry):
         self.screen = screen
         self.W, self.H = W, H
@@ -535,6 +597,370 @@ class CompendiumDetailScreen:
 
         draw_text(surf, "Esc  돌아가기",
                   self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.05))
+
+
+# ══════════════════════════════════════════════════════════════════
+#   전투 화면
+# ══════════════════════════════════════════════════════════════════
+class BattleScreen:
+    ENEMY_ORDER   = [0, -1, 1, -2, 2]
+    ENEMY_SPACING = 0.13
+    ALLY_SPACING  = 0.15
+    UI_H_RATIO    = 0.3
+
+    STATE_MENU   = "menu"
+    STATE_TARGET = "target"
+
+    TAB_NAMES = ["개요", "스킬", "패시브"]
+
+    def __init__(self, screen, W, H, fonts, enemies, allies):
+        self.screen  = screen
+        self.W, self.H = W, H
+        self.fonts   = fonts
+
+        enemy_max_w = int(W * 0.55)
+        enemy_max_h = int(H * 0.55)
+        ally_max_w  = int(W * 0.5)
+        ally_max_h  = int(H * 0.5)
+
+        self.enemies = [Combatant(ENEMY_DEFS[k], W, H, enemy_max_w, enemy_max_h) for k in enemies]
+        self.allies  = [Combatant(ALLY_DEFS[k],  W, H, ally_max_w,  ally_max_h)  for k in allies]
+
+        self.ui_y    = int(H * (1.0 - self.UI_H_RATIO))
+
+        self.state           = self.STATE_MENU
+        self.menu_selected   = 0
+        self.target_selected = 0
+        self.UI_ITEMS        = ["공격", "수비", "아이템"]
+
+        self.inspect_enemy  = None
+        self.inspect_tab    = 0
+        self.inspect_sprite = None
+
+    def _ui_rect(self):
+        W, H = self.W, self.H
+        ui_h = int(H * self.UI_H_RATIO) - int(H * 0.02)
+        ui_w = int(W // 2 * 2 / 3) // 2
+        ui_x = W - ui_w - int(W * 0.02)
+        return pygame.Rect(ui_x, self.ui_y, ui_w, ui_h)
+
+    def _target_rect(self):
+        ui = self._ui_rect()
+        return pygame.Rect(ui.left - ui.width, ui.top, ui.width, ui.height)
+
+    def _enemy_sprite_rect(self, i):
+        positions = self._enemy_positions()
+        if i >= len(positions):
+            return None
+        ex, ey = positions[i]
+        e = self.enemies[i]
+        H = self.H
+        if e.sprite:
+            return e.sprite.get_rect(midbottom=(ex, ey + int(H * 0.08)))
+        return pygame.Rect(ex - 40, ey - 80, 80, 80)
+
+    def _open_inspect(self, enemy_idx):
+        e = self.enemies[enemy_idx]
+        self.inspect_enemy = e
+        self.inspect_tab   = 0
+        W, H = self.W, self.H
+        if e.sprite_orig:
+            iw, ih   = e.sprite_orig.get_size()
+            target_h = int(H * 0.9)
+            target_w = int(W * 0.48)
+            scale    = min(target_w / iw, target_h / ih)
+            self.inspect_sprite = pygame.transform.smoothscale(
+                e.sprite_orig, (int(iw * scale), int(ih * scale))
+            )
+        else:
+            self.inspect_sprite = None
+
+    def handle_event(self, event):
+        if self.inspect_enemy is not None:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.inspect_enemy = None
+                elif event.key in (pygame.K_LEFT, pygame.K_a):
+                    self.inspect_tab = (self.inspect_tab - 1) % len(self.TAB_NAMES)
+                elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                    self.inspect_tab = (self.inspect_tab + 1) % len(self.TAB_NAMES)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                W, H = self.W, self.H
+                pad      = int(W * 0.02)
+                left_w   = int(W * 0.48)
+                info_x   = pad + left_w
+                info_w   = W - pad * 2 - left_w
+                tab_total_w  = info_w - pad * 2
+                tab_w        = tab_total_w // len(self.TAB_NAMES)
+                bar_y    = pad + int(H * 0.22)
+                bar_h    = int(H * 0.03)
+                tab_y    = bar_y + bar_h + int(H * 0.03)
+                tab_h    = int(H * 0.06)
+                mx, my   = event.pos
+                if tab_y <= my <= tab_y + tab_h:
+                    for ti in range(len(self.TAB_NAMES)):
+                        tx = info_x + pad + ti * tab_w
+                        if tx <= mx <= tx + tab_w:
+                            self.inspect_tab = ti
+                else:
+                    self.inspect_enemy = None
+            return None
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                if self.state == self.STATE_TARGET:
+                    self.state = self.STATE_MENU
+                else:
+                    return "back"
+            elif self.state == self.STATE_MENU:
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self.menu_selected = (self.menu_selected - 1) % len(self.UI_ITEMS)
+                elif event.key in (pygame.K_DOWN, pygame.K_s):
+                    self.menu_selected = (self.menu_selected + 1) % len(self.UI_ITEMS)
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    if self.UI_ITEMS[self.menu_selected] == "공격":
+                        self.state = self.STATE_TARGET
+                        self.target_selected = 0
+            elif self.state == self.STATE_TARGET:
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self.target_selected = (self.target_selected - 1) % len(self.enemies)
+                elif event.key in (pygame.K_DOWN, pygame.K_s):
+                    self.target_selected = (self.target_selected + 1) % len(self.enemies)
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._do_attack(self.target_selected)
+                    self.state = self.STATE_MENU
+
+        elif event.type == pygame.MOUSEMOTION:
+            mx, my = event.pos
+            if self.state == self.STATE_MENU:
+                ui     = self._ui_rect()
+                item_h = ui.height // (len(self.UI_ITEMS) + 1)
+                for i in range(len(self.UI_ITEMS)):
+                    cy = ui.top + item_h * (i + 1)
+                    if abs(my - cy) < item_h // 2:
+                        self.menu_selected = i
+            elif self.state == self.STATE_TARGET:
+                tr     = self._target_rect()
+                slot_h = tr.height // 5
+                for i in range(len(self.enemies)):
+                    slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                    if slot_rect.collidepoint(mx, my):
+                        self.target_selected = i
+
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            for i in range(len(self.enemies)):
+                r = self._enemy_sprite_rect(i)
+                if r and r.collidepoint(mx, my):
+                    self._open_inspect(i)
+                    return None
+
+            if self.state == self.STATE_MENU:
+                ui     = self._ui_rect()
+                item_h = ui.height // (len(self.UI_ITEMS) + 1)
+                for i in range(len(self.UI_ITEMS)):
+                    cy = ui.top + item_h * (i + 1)
+                    if abs(my - cy) < item_h // 2 and ui.left <= mx <= ui.right:
+                        self.menu_selected = i
+                        if self.UI_ITEMS[i] == "공격":
+                            self.state = self.STATE_TARGET
+                            self.target_selected = 0
+            elif self.state == self.STATE_TARGET:
+                tr     = self._target_rect()
+                slot_h = tr.height // 5
+                for i in range(len(self.enemies)):
+                    slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                    if slot_rect.collidepoint(mx, my):
+                        self._do_attack(i)
+                        self.state = self.STATE_MENU
+
+        return None
+
+    def _do_attack(self, target_idx):
+        target = self.enemies[target_idx]
+        target.hp = max(0, target.hp - 100)
+
+    def update(self, dt): pass
+
+    def _enemy_positions(self):
+        W, H    = self.W, self.H
+        cx      = W // 2
+        area_cy = int(H * 0.6)
+        spacing = int(W * self.ENEMY_SPACING)
+        positions = []
+        for i, e in enumerate(self.enemies):
+            offset = self.ENEMY_ORDER[i] * spacing
+            positions.append((cx + offset, area_cy))
+        return positions
+
+    def _ally_positions(self):
+        W, H    = self.W, self.H
+        foot_y  = H
+        spacing = int(W * self.ALLY_SPACING)
+        start_x = int(W * 0.1)
+        return [(start_x + i * spacing, foot_y) for i in range(len(self.allies))]
+
+    def draw(self):
+        W, H = self.W, self.H
+        surf = self.screen
+        surf.fill(WHITE)
+
+        # ── 적 ────────────────────────────────────────────────────
+        enemy_pos = self._enemy_positions()
+        for i, (e, (ex, ey)) in enumerate(zip(self.enemies, enemy_pos)):
+            if e.sprite:
+                r = e.sprite.get_rect(midbottom=(ex, ey + int(H * 0.08)))
+                surf.blit(e.sprite, r)
+            else:
+                pygame.draw.rect(surf, GRAY, pygame.Rect(ex - 40, ey - 80, 80, 80))
+
+            if e.ctype == "boss":
+                bw = int(W * 0.55)
+                bh = int(H * 0.035)
+                bx = (W - bw) // 2
+                by = int(H * 0.03)
+                pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+                fill = int(bw * e.hp / e.hp_max)
+                pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
+                pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 2)
+                draw_text(surf, e.title, self.fonts["hint"], BLACK, W // 2, by + bh + int(H * 0.025))
+                draw_text(surf, e.name,  self.fonts["menu"], BLACK, W // 2, by + bh + int(H * 0.065))
+            else:
+                bw = int(W * 0.1)
+                bh = int(H * 0.018)
+                bx = ex - bw // 2
+                by = ey - int(H * 0.22)
+                pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+                fill = int(bw * e.hp / e.hp_max)
+                pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
+                pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
+
+        # ── 아군 ──────────────────────────────────────────────────
+        ally_pos = self._ally_positions()
+        for a, (ax, ay) in zip(self.allies, ally_pos):
+            if a.sprite:
+                flipped = pygame.transform.flip(a.sprite, True, False)
+                r = flipped.get_rect(midbottom=(ax, ay))
+                surf.blit(flipped, r)
+            else:
+                pygame.draw.rect(surf, GRAY, pygame.Rect(ax - 30, ay - 60, 60, 60))
+
+            bw = int(W * 0.09)
+            bh = int(H * 0.018)
+            bx = ax - bw // 2
+            by = ay - int(H * 0.04)
+            pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+            fill = int(bw * a.hp / a.hp_max)
+            pygame.draw.rect(surf, GREEN, (bx, by, fill, bh))
+            pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
+
+        # ── 행동 메뉴 UI ──────────────────────────────────────────
+        ui     = self._ui_rect()
+        item_h = ui.height // (len(self.UI_ITEMS) + 1)
+        pygame.draw.rect(surf, WHITE, ui)
+        pygame.draw.rect(surf, BLACK, ui, 2)
+        for i, item in enumerate(self.UI_ITEMS):
+            cy  = ui.top + item_h * (i + 1)
+            sel = (i == self.menu_selected)
+            r   = pygame.Rect(ui.left + 4, cy - item_h // 2 + 2, ui.width - 8, item_h - 4)
+            if sel and self.state == self.STATE_MENU:
+                pygame.draw.rect(surf, BLACK, r)
+                draw_text(surf, item, self.fonts["menu"], WHITE, ui.centerx, cy)
+            else:
+                draw_text(surf, item, self.fonts["menu"], BLACK, ui.centerx, cy)
+
+        # ── 대상 선택 창 ──────────────────────────────────────────
+        if self.state == self.STATE_TARGET:
+            tr     = self._target_rect()
+            slot_h = tr.height // 5
+            pygame.draw.rect(surf, WHITE, tr)
+            pygame.draw.rect(surf, BLACK, tr, 2)
+            for i in range(5):
+                slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                pygame.draw.line(surf, GRAY, (tr.left, tr.top + i * slot_h), (tr.right, tr.top + i * slot_h), 1)
+                if i < len(self.enemies):
+                    e   = self.enemies[i]
+                    sel = (i == self.target_selected)
+                    cy  = slot_rect.centery
+                    if sel:
+                        pygame.draw.rect(surf, BLACK, slot_rect)
+                        draw_text(surf, e.name, self.fonts["menu"], WHITE, tr.centerx, cy)
+                    else:
+                        draw_text(surf, e.name, self.fonts["menu"], BLACK, tr.centerx, cy)
+
+        # ── 적 정보 오버레이 ──────────────────────────────────────
+        if self.inspect_enemy is not None:
+            e = self.inspect_enemy
+            dim = pygame.Surface((W, H), pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 180))
+            surf.blit(dim, (0, 0))
+
+            pad   = int(W * 0.02)
+            panel = pygame.Rect(pad, pad, W - pad * 2, H - pad * 2)
+            pygame.draw.rect(surf, WHITE, panel)
+            pygame.draw.rect(surf, BLACK, panel, 2)
+
+            left_w = int(W * 0.48)
+            info_x = pad + left_w
+            info_w = panel.width - left_w
+
+            if self.inspect_sprite:
+                sr = self.inspect_sprite.get_rect(midbottom=(pad + left_w // 2, panel.bottom - pad))
+                surf.blit(self.inspect_sprite, sr)
+
+            # 각 요소 y 독립 설정
+            name_y = pad + int(H * 0.09)   # ← 이름 y
+            stat_y = pad + int(H * 0.17)   # ← LV/P/M y
+            bar_y  = pad + int(H * 0.22)   # ← 체력바 y
+
+            name_str = f"{e.name}"
+            stat_str = f"LV.{e.level}   P {e.phys_level}   M {e.magic_level}"
+            draw_text_left(surf, name_str, self.fonts["title"], BLACK, info_x + pad, name_y)
+            draw_text_left(surf, stat_str, self.fonts["menu"],  BLACK, info_x + pad, stat_y)
+
+            # 체력바
+            tab_total_w  = info_w - pad * 2
+            tab_w        = tab_total_w // len(self.TAB_NAMES)
+            tabs_total_w = tab_w * len(self.TAB_NAMES)
+            bar_w = tabs_total_w
+            bar_h = int(H * 0.03)
+            bar_x = info_x + pad
+            pygame.draw.rect(surf, GRAY,  (bar_x, bar_y, bar_w, bar_h))
+            fill = int(bar_w * e.hp / e.hp_max)
+            pygame.draw.rect(surf, RED,   (bar_x, bar_y, fill, bar_h))
+            pygame.draw.rect(surf, BLACK, (bar_x, bar_y, bar_w, bar_h), 2)
+            hp_str = f"{e.hp} / {e.hp_max}"
+            draw_text(surf, hp_str, self.fonts["hint"], BLACK,
+                      bar_x + bar_w // 2, bar_y + bar_h // 2)
+
+            # 탭
+            tab_y = bar_y + bar_h + int(H * 0.03)
+            tab_h = int(H * 0.06)
+            for ti, tname in enumerate(self.TAB_NAMES):
+                tx   = info_x + pad + ti * tab_w
+                trec = pygame.Rect(tx, tab_y, tab_w, tab_h)
+                if ti == self.inspect_tab:
+                    pygame.draw.rect(surf, BLACK, trec)
+                    draw_text(surf, tname, self.fonts["menu"], WHITE, trec.centerx, trec.centery)
+                else:
+                    pygame.draw.rect(surf, WHITE, trec)
+                    pygame.draw.rect(surf, BLACK, trec, 1)
+                    draw_text(surf, tname, self.fonts["menu"], BLACK, trec.centerx, trec.centery)
+
+            # 탭 내용
+            content_y    = tab_y + tab_h
+            content_rect = pygame.Rect(info_x + pad, content_y,
+                                       tabs_total_w, panel.bottom - pad - content_y)
+            pygame.draw.rect(surf, WHITE, content_rect)
+            pygame.draw.rect(surf, BLACK, content_rect, 1)
+            draw_text(surf, "준비 중입니다.", self.fonts["menu"], GRAY_D,
+                      content_rect.centerx, content_rect.centery)
+
+            draw_text(surf, "Esc / 바깥 클릭  닫기",
+                      self.fonts["hint"], GRAY_D, panel.centerx, panel.bottom - int(H * 0.03))
+
+        draw_text(surf, "Esc  돌아가기",
+                  self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.02))
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -666,6 +1092,7 @@ def main():
     placeholder  = None
     settings_sc  = None
     gallery_sc   = None
+    battle_sc    = None
 
     comp_stack   = []
 
@@ -735,6 +1162,11 @@ def main():
                 elif a == "start":
                     placeholder = PlaceholderScreen(screen, W, H, fonts, "게임 시작")
                     current = "placeholder"
+                elif a == "battle_test":
+                    battle_sc = BattleScreen(screen, W, H, fonts,
+                                             enemies=["벨라"],
+                                             allies=["주인공"])
+                    current = "battle"
 
             elif current == "settings":
                 r = settings_sc.handle_event(event)
@@ -757,6 +1189,11 @@ def main():
                     push_comp(CompendiumMenuScreen(screen, W, H, fonts, "적 도감", top_items))
                     current = "compendium"
 
+            elif current == "battle":
+                r = battle_sc.handle_event(event)
+                if r == "back":
+                    current = "title"
+
             elif current == "placeholder":
                 r = placeholder.handle_event(event)
                 if r == "back":
@@ -767,6 +1204,7 @@ def main():
         elif current == "gallery":      gallery_sc.update(dt)
         elif current == "compendium" and comp_stack:
                                         comp_top().update(dt)
+        elif current == "battle":       battle_sc.update(dt)
         elif current == "placeholder":  placeholder.update(dt)
         if overlay == "quit":           quit_dlg.update(dt)
 
@@ -775,6 +1213,7 @@ def main():
         elif current == "gallery":      gallery_sc.draw()
         elif current == "compendium" and comp_stack:
                                         comp_top().draw()
+        elif current == "battle":       battle_sc.draw()
         elif current == "placeholder":  placeholder.draw()
         if overlay == "quit":           quit_dlg.draw()
 
