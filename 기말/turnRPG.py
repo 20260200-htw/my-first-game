@@ -100,7 +100,7 @@ ENEMY_DEFS = {
         "hp_max":        10000,
         "sprite":        "assets/knight_leader.png",
         "sprite_scale":  0.5625,
-        "click_w_ratio": 0.5,
+        "click_w_ratio": 0.2,
         "overview": [
             "벨라 트릭스",
             "",
@@ -226,6 +226,18 @@ ENEMY_DEFS = {
             },
         ],
     },
+    "벨라_일반": {
+        "title":         "",
+        "name":          "벨라",
+        "type":          "normal",
+        "level":         100,
+        "phys_level":    100,
+        "magic_level":   100,
+        "hp_max":        10000,
+        "sprite":        "assets/knight_leader.png",
+        "sprite_scale":  0.5625,
+        "click_w_ratio": 0.2,
+    },
 }
 
 ALLY_DEFS = {
@@ -237,8 +249,8 @@ ALLY_DEFS = {
         "magic_level":   10,
         "hp_max":        100,
         "sprite":        "assets/main_character.png",
-        "sprite_scale":  0.5,
-        "click_w_ratio": 0.4,
+        "sprite_scale":  0.7,
+        "click_w_ratio": 0.2,
     },
     "아우렐리우스": {
         "name":          "아우렐리우스",
@@ -248,8 +260,57 @@ ALLY_DEFS = {
         "magic_level":   83,
         "hp_max":        6570,
         "sprite":        "assets/super_healer_man.png",
-        "sprite_scale":  0.51,
-        "click_w_ratio": 0.4,
+        "sprite_scale":  0.8,
+        "click_w_ratio": 0.2,
+        "overview": [
+            "플라비우스 아우렐리우스",
+            "",
+            "그는 서부의 신호 입니다.",
+            "타인을 돕고 치유하는 것에 주로 시간을 씁니다.",
+            "",
+            "그가 회복 마법을 주로 사용한다고 얕잡아 보아서는 안 됩니다.",
+            "'신호' 의 칭호를 가졌다는 것은, 이 세계에서 손에 꼽는 강자라는 의미입니다.",
+            "",
+            "그가 따르고 있는 신은 존재하지 않고, 그도 그것을 알고 있습니다.",
+            "그럼에도 그가 신을 따르는 이유는 타인을 돕는 행위에 의미를 부여하기 위함입니다.",
+        ],
+        "passives": [
+            {
+                "name": "신이 없는 세계의 사제",
+                "desc": [
+                    "모든 피해로부터 받는 피해가 10% 감소합니다.",
+                    "자신과 아군에게 가하는 회복 효과가 50% 증가합니다.",
+                ]
+            },
+            {
+                "name": "황금 빛으로 빛나는",
+                "desc": [
+                    "매 턴이 시작될 때마다 자신의 전체 마력의 5%를 소모합니다.",
+                    "이때 소모한 마력 만큼 아군 모두에게 회복 효과를 적용합니다.",
+                ]
+            },
+            {
+                "name": "마력 발산 - 대리인",
+                "desc": [
+                    "'마력 발산' 상태가 되면 회복 효과를 가진 모든 스킬의 최종 위력이 20 증가합니다.",
+                    "자신 또는 아군에게 회복 효과를 적용할 때마다 적용된 회복량 만큼 보호막을 추가로 부여합니다.",
+                ]
+            },
+            {
+                "name": "성스러운 육체",
+                "desc": [
+                    "자신이 적에게 피해를 받으면 다음 턴이 시작될 때 받은 피해 만큼 보호막을 얻습니다.",
+                    "이 효과로 얻는 보호막은 보호막을 전부 소모하기 전까지 사라지지 않으며, 무한히 중첩됩니다.",
+                ]
+            },
+            {
+                "name": "서부의 신호",
+                "desc": [
+                    "자신에게 회복 효과가 적용되면 다음 턴에 물리 스킬의 최종 위력이 10 증가합니다.",
+                    "이 효과는 누구의 회복 효과든 발동이 가능하며, 중첩되지 않고 다음 턴이 되면 사라집니다.",
+                ]
+            },
+        ]
     },
     "금강": {
         "name":          "금강",
@@ -259,8 +320,53 @@ ALLY_DEFS = {
         "magic_level":   72,
         "hp_max":        5560,
         "sprite":        "assets/super_fight_girl.png",
-        "sprite_scale":  0.5,
-        "click_w_ratio": 0.4,
+        "sprite_scale":  0.75,
+        "click_w_ratio": 0.2,
+        "overview": [
+            "금강",
+            "",
+            "그녀는 동부의 신호 입니다.",
+            "금강석과 비슷한 성질로 신체를 강화하는 마법만을 고수합니다.",
+            "",
+            "그녀는 2년 전, 19살이라는 어린 나이에 '신호' 의 칭호를 받았습니다.",
+            "그렇기에 다른 '신호' 들에 비해 확실히 어리숙한 면이 돋보이는 자입니다.",
+            "",
+            "만만해 보이지만, 그녀 또한 이 세계에서 손에 꼽는 강자라는 것을 잊어서는 안 됩니다.",
+        ],
+        "passives": [
+            {
+                "name": "금강석",
+                "desc": [
+                    "모든 피해로부터 받는 피해가 10% 감소합니다.",
+                ]
+            },
+            {
+                "name": "집착에 가까운 단련",
+                "desc": [
+                    "'금강' 외의 다른 마법 스킬을 사용할 수 없습니다.",
+                ]
+            },
+            {
+                "name": "마력 발산 - 금강석",
+                "desc": [
+                    "'마력 발산' 상태가 되면 매 턴이 시작될 때마다 전체 마력의 10%를 소모하고 '금강' 상태로 취급됩니다.",
+                    "'금강석' 으로 얻는 피해 감소 효과가 추가로 50% 증가하고, 모든 물리 스킬의 최종 위력이 15 증가합니다.",
+                ]
+            },
+            {
+                "name": "금강석과도 같은 육체",
+                "desc": [
+                    "매 턴이 시작될 때마다 최대 체력의 10% 만큼 보호막을 얻습니다.",
+                    "대신 '금강' 상태가 되면 매 턴이 시작될 때마다 최대 체력의 30% 만큼 보호막을 얻습니다.",
+                ]
+            },
+            {
+                "name": "동부의 신호",
+                "desc": [
+                    "마법 스킬로 피해를 입으면 공격자에게 (물리 레벨)*2 만큼 물리 피해를 입힙니다.",
+                ]
+            },
+        ]
     },
 }
 
@@ -316,39 +422,81 @@ class Combatant:
 #   도감 데이터
 # ══════════════════════════════════════════════════════════════════
 COMPENDIUM = {
-    "인간": {
-        "주인공": {
-            "image": "assets/main_character.png",
-            "description": [
-                "이름: 미정",
-                "소속: 미정",
-                "설명: 준비 중입니다.",
-            ]
-        },
+    "판타지아": {
         "중앙": {
-            "왕국 기사단": {
-                "기사단장": {
-                    "image": "assets/knight_leader.png",
+            "인간": {
+                "왕국 기사단": {
+                    "기사단장": {
+                        "image": "assets/knight_leader.png",
+                        "description": [
+                            "이름: 벨라",
+                            "나이: 21",
+                            "신장: 177cm",
+                            "소속: 왕국 기사단",
+                            "직위: 기사단장",
+                            "설명: 왕국 기사단의 최연소 단장입니다.",
+                            "판타지아의 가장 강한 이들 중 하나입니다.",
+                            "능력치: LV 100 | P 100 | M 100"
+                        ]
+                    }
+                }
+            },
+            "마족": None,
+            "마물": None,
+        },
+        "동부": {
+            "인간": {
+                "동부의 신호": {
+                    "image": "assets/super_fight_girl.png",
                     "description": [
-                        "이름: 벨라",
+                        "이름: 금강",
                         "나이: 21",
-                        "신장: 177cm",
-                        "소속: 왕국 기사단",
-                        "직위: 기사단장",
-                        "설명: 왕국 기사단의 최연소 단장입니다.",
-                        "판타지아의 가장 강한 이들 중 하나입니다.",
-                        "능력치: LV 100 | P 100 | M 100"
+                        "신장: 173cm",
+                        "소속: 동부",
+                        "직위: 동부의 신호",
+                        "설명: 동부의 신호입니다.",
+                        "판타지아의 손에 꼽는 강자들 중 하나입니다.",
+                        "능력치: LV 82 | P 86 | M 72"
                     ]
                 }
-            }
+            },
+            "마족": None,
+            "마물": None,
         },
-        "동부":  None,
-        "서부":  None,
-        "남부":  None,
-        "북부":  None,
+        "서부": {
+            "인간": {
+                "서부의 신호": {
+                    "image": "assets/super_healer_man.png",
+                    "description": [
+                        "이름: 플라비우스 아우렐리우스",
+                        "나이: 37",
+                        "신장: 187cm",
+                        "소속: 서부",
+                        "직위: 서부의 신호",
+                        "설명: 서부의 신호입니다.",
+                        "판타지아의 손에 꼽는 강자들 중 하나입니다.",
+                        "능력치: LV 88 | P 84 | M 83"
+                    ]
+                }
+            },
+            "마족": None,
+            "마물": None,
+        },
+        "남부": {
+            "인간": None,
+            "마족": None,
+            "마물": None,
+        },
+        "북부": {
+            "인간": None,
+            "마족": None,
+            "마물": None,
+        },
     },
-    "마족":  None,
-    "마물":  None,
+    "2번째 세계": None,
+    "3번째 세계": None,
+    "4번째 세계": None,
+    "5번째 세계": None,
 }
 
 
@@ -588,7 +736,7 @@ class SettingsScreen:
 #   갤러리 화면
 # ══════════════════════════════════════════════════════════════════
 class GalleryScreen:
-    ITEMS = ["스토리 컷신", "적 도감", "돌아가기"]
+    ITEMS = ["스토리 컷신", "도감", "돌아가기"]
 
     def __init__(self, screen, W, H, fonts):
         self.screen = screen
@@ -1050,19 +1198,22 @@ class BattleScreen:
     def update(self, dt): pass
 
     def _enemy_positions(self):
-        W, H    = self.W, self.H
-        cx      = W // 2
-        area_cy = int(H * 0.6)
-        spacing = int(W * self.ENEMY_SPACING)
+        W, H = self.W, self.H
         positions = []
         for i, e in enumerate(self.enemies):
-            offset = self.ENEMY_ORDER[i] * spacing
-            positions.append((cx + offset, area_cy))
+            if i == 0:
+                positions.append((int(W * 0.75), int(H * 0.55)))
+            else:
+                count = len(self.enemies) - 1
+                spacing = int(W * 0.15)
+                start_x = int(W * 0.1)
+                reversed_i = count - (i - 1) - 1
+                positions.append((start_x + reversed_i * spacing, int(H * 0.42)))
         return positions
 
     def _ally_positions(self):
         W, H    = self.W, self.H
-        foot_y  = H
+        foot_y  = int(H * 1.4)
         spacing = int(W * self.ALLY_SPACING)
         start_x = int(W * 0.1)
         return [(start_x + i * spacing, foot_y) for i in range(len(self.allies))]
@@ -1144,12 +1295,13 @@ class BattleScreen:
                 ty = content_rect.top + int(H * 0.025) - self.inspect_scroll
                 old_clip = surf.get_clip()
                 surf.set_clip(content_rect)
-                for line in c.overview:
+                for li, line in enumerate(c.overview):
                     if line == "":
                         ty += line_h // 2
                     else:
                         if content_rect.top <= ty <= content_rect.bottom:
-                            draw_text_left(surf, line, self.fonts["hint_bold"], BLACK, tx, ty + line_h // 2)
+                            font = self.fonts["hint_bold"] if li == 0 else self.fonts["small_bold"]
+                            draw_text_left(surf, line, font, BLACK, tx, ty + line_h // 2)
                         ty += line_h
                 surf.set_clip(old_clip)
             else:
@@ -1262,9 +1414,16 @@ class BattleScreen:
         # ── 적 ────────────────────────────────────────────────────
         enemy_pos = self._enemy_positions()
         for i, (e, (ex, ey)) in enumerate(zip(self.enemies, enemy_pos)):
+            spr_rect = None
             if e.sprite:
-                r = e.sprite.get_rect(midbottom=(ex, ey + int(H * 0.08)))
-                surf.blit(e.sprite, r)
+                if i == 0:
+                    spr = e.sprite
+                else:
+                    sw = int(e.sprite.get_width() * 0.5)
+                    sh = int(e.sprite.get_height() * 0.5)
+                    spr = pygame.transform.smoothscale(e.sprite, (sw, sh))
+                spr_rect = spr.get_rect(midbottom=(ex, ey + int(H * 0.08)))
+                surf.blit(spr, spr_rect)
             else:
                 pygame.draw.rect(surf, GRAY, pygame.Rect(ex - 40, ey - 80, 80, 80))
 
@@ -1280,10 +1439,10 @@ class BattleScreen:
                 draw_text(surf, e.title, self.fonts["hint"], BLACK, W // 2, by + bh + int(H * 0.025))
                 draw_text(surf, e.name,  self.fonts["menu"], BLACK, W // 2, by + bh + int(H * 0.065))
             else:
-                bw = int(W * 0.1)
+                bw = int(W * 0.07)
                 bh = int(H * 0.018)
                 bx = ex - bw // 2
-                by = ey - int(H * 0.22)
+                by = spr_rect.top - int(H * 0.025) if spr_rect else ey - int(H * 0.22)
                 pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
                 fill = int(bw * e.hp / e.hp_max)
                 pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
@@ -1296,13 +1455,15 @@ class BattleScreen:
                 flipped = pygame.transform.flip(a.sprite, True, False)
                 r = flipped.get_rect(midbottom=(ax, ay))
                 surf.blit(flipped, r)
+                bar_top = r.top - int(H * 0.025)
             else:
                 pygame.draw.rect(surf, GRAY, pygame.Rect(ax - 30, ay - 60, 60, 60))
+                bar_top = ay - 70
 
             bw = int(W * 0.09)
             bh = int(H * 0.018)
             bx = ax - bw // 2
-            by = ay - int(H * 0.04)
+            by = bar_top
             pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
             fill = int(bw * a.hp / a.hp_max)
             pygame.draw.rect(surf, GREEN, (bx, by, fill, bh))
@@ -1554,7 +1715,7 @@ def main():
                     current = "placeholder"
                 elif a == "battle_test":
                     battle_sc = BattleScreen(screen, W, H, fonts,
-                                             enemies=["벨라"],
+                                             enemies=["벨라", "벨라_일반", "벨라_일반", "벨라_일반", "벨라_일반"],
                                              allies=["주인공", "아우렐리우스", "금강"])
                     current = "battle"
 
@@ -1576,7 +1737,7 @@ def main():
                 elif r == "compendium":
                     comp_stack.clear()
                     top_items = [(k, v) for k, v in COMPENDIUM.items()]
-                    push_comp(CompendiumMenuScreen(screen, W, H, fonts, "적 도감", top_items))
+                    push_comp(CompendiumMenuScreen(screen, W, H, fonts, "도감", top_items))
                     current = "compendium"
 
             elif current == "battle":
