@@ -44,6 +44,25 @@ def draw_text_left(surf, text, font, color, x, cy):
     surf.blit(img, img.get_rect(midleft=(x, cy)))
 
 
+def draw_text_left_underline(surf, text, font, color, x, cy):
+    """'텍스트' 사이 단어에 밑줄을 그어 렌더링. 밑줄 단어의 rect 리스트와 단어 리스트를 반환."""
+    parts = text.split("'")
+    cur_x = x
+    underline_rects = []  # (rect, word)
+    for i, part in enumerate(parts):
+        if not part:
+            continue
+        img = font.render(part, True, color)
+        r = img.get_rect(midleft=(cur_x, cy))
+        surf.blit(img, r)
+        if i % 2 == 1:
+            uy = r.bottom - 1
+            pygame.draw.line(surf, color, (r.left, uy), (r.right, uy), 1)
+            underline_rects.append((r, part))
+        cur_x = r.right
+    return underline_rects
+
+
 def move_window_center(W, H):
     try:
         hwnd = pygame.display.get_wm_info()["window"]
@@ -72,26 +91,176 @@ def apply_resolution():
 # ══════════════════════════════════════════════════════════════════
 ENEMY_DEFS = {
     "벨라": {
-        "title":       "왕국 기사단장",
-        "name":        "벨라",
-        "type":        "boss",
-        "level":       100,
-        "phys_level":  100,
-        "magic_level": 100,
-        "hp_max":      10000,
-        "sprite":      "assets/knight_leader.png",
+        "title":         "왕국 기사단장",
+        "name":          "벨라",
+        "type":          "boss",
+        "level":         100,
+        "phys_level":    100,
+        "magic_level":   100,
+        "hp_max":        10000,
+        "sprite":        "assets/knight_leader.png",
+        "sprite_scale":  0.5625,
+        "click_w_ratio": 0.5,
+        "overview": [
+            "벨라 트릭스",
+            "",
+            "그녀는 중앙 왕국의 기사단장 입니다.",
+            "적의를 가지고 싸움을 건 것은 아닌 것으로 보입니다.",
+            "",
+            "그렇다고 해서 당신을 죽이지 않는다는 보장은 없으니",
+            "최선을 다해서 그녀의 의도에 맞춰주는 것을 권장합니다.",
+            "",
+            "그녀와 싸우는 것은 이 세계에서 할 수 있는",
+            "가장 멍청한 짓 중 하나일 것입니다.",
+        ],
+        "passives": [
+            {
+                "name": "왕국 기사단장",
+                "desc": [
+                    "모든 피해로부터 받는 피해가 30% 감소합니다.",
+                    "자신이 적에게 가하는 모든 피해가 50% 증가합니다.",
+                ]
+            },
+            {
+                "name": "기사단장의 명령",
+                "desc": [
+                    "이번 전투에서 왕국 기사단이 참전하지 않습니다.",
+                    "또한 벨라가 '시험' 을 얻습니다.",
+                ]
+            },
+            {
+                "name": "마력 발산 - 지옥불",
+                "desc": [
+                    "'마력 발산' 상태가 되면 모든 스킬의 최종 위력이 30 증가합니다.",
+                    "매 턴이 시작될 때마다 (물리 레벨+마법 레벨)*1 만큼 모든 적에게 마법 피해를 입힙니다.",
+                ]
+            },
+            {
+                "name": "지옥불 결계",
+                "desc": [
+                    "매 턴이 시작될 때마다 보호막을 1000 만큼 얻습니다.",
+                    "적에게 피해를 받으면 즉시 파괴되며, 다음 턴이 되기 전까지 보호막을 얻지 않습니다.",
+                ]
+            },
+            {
+                "name": "전황 분석",
+                "desc": [
+                    "매 턴이 시작될 때마다 '전황 분석' 중첩을 1 얻습니다.",
+                    "중첩 당 자신이 가하는 모든 피해가 5% 증가합니다.",
+                ]
+            },
+        ],
+        "buffs": {
+            "시험": {
+                "desc": [
+                    "자신이 사용하는 모든 스킬의 최종 위력이 50 감소합니다.",
+                ]
+            },
+        },
+        "skills": [
+            {
+                "name":   "찌르기",
+                "power":  50,
+                "type":   "물리",
+                "target": "단일",
+                "hits":   1,
+                "tags":   ["필중"],
+                "sprite": "assets/KL_skills_1.png",
+                "desc": [
+                    "반드시 주인공을 대상으로 지정함",
+                    "대상이 수비 스킬 '방어' 를 사용하였다면 피해량 -50%",
+                ]
+            },
+            {
+                "name":   "피하는 것이 좋을 겁니다",
+                "power":  80,
+                "type":   "물리",
+                "target": "단일",
+                "hits":   1,
+                "tags":   ["필중"],
+                "sprite": "assets/KL_skills_2.png",
+                "desc": [
+                    "반드시 주인공을 대상으로 지정함",
+                    "대상이 수비 스킬 '방어' 를 사용하였다면 피해량 +500%",
+                    "대상이 수비 스킬 '회피' 를 사용하였다면 최종 위력이 0으로 고정됨",
+                ]
+            },
+            {
+                "name":   "이번 건 피할 수 없을 겁니다",
+                "power":  30,
+                "type":   "물리",
+                "target": "5인",
+                "hits":   1,
+                "tags":   ["난사"],
+                "sprite": "assets/KL_skills_3.png",
+                "desc": [
+                    "수비 스킬 '방어' 를 사용한 대상에게는 피해량 -90%",
+                    "수비 스킬 '회피' 를 사용한 대상에게는 '필중' 효과가 함께 적용됨",
+                ]
+            },
+            {
+                "name":   "당신들도 예외는 아닙니다",
+                "power":  130,
+                "type":   "물리",
+                "target": "단일",
+                "hits":   1,
+                "tags":   ["필중"],
+                "sprite": "assets/KL_skills_4.png",
+                "desc": [
+                    "주인공을 제외한 적을 대상으로 지정함",
+                    "대상이 '보호막' 을 가지고 있다면 피해를 입히기 전 보호막을 전부 파괴함",
+                ]
+            },
+            {
+                "name":   "꿰뚫는 불꽃",
+                "power":  300,
+                "type":   "마법",
+                "target": "5인",
+                "hits":   3,
+                "tags":   [],
+                "sprite": "assets/KL_skills_5.png",
+                "desc": [
+                    "반드시 주인공을 대상으로 지정함",
+                    "대상이 이 스킬로 피해를 받기 전 자신을 공격했다면 해당 스킬을 취소함",
+                ]
+            },
+        ],
     },
 }
 
 ALLY_DEFS = {
     "주인공": {
-        "name":        "주인공",
-        "type":        "player",
-        "level":       10,
-        "phys_level":  10,
-        "magic_level": 10,
-        "hp_max":      100,
-        "sprite":      "assets/main_character.png",
+        "name":          "주인공",
+        "type":          "player",
+        "level":         10,
+        "phys_level":    10,
+        "magic_level":   10,
+        "hp_max":        100,
+        "sprite":        "assets/main_character.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.4,
+    },
+    "아우렐리우스": {
+        "name":          "아우렐리우스",
+        "type":          "ally",
+        "level":         88,
+        "phys_level":    84,
+        "magic_level":   83,
+        "hp_max":        6570,
+        "sprite":        "assets/super_healer_man.png",
+        "sprite_scale":  0.51,
+        "click_w_ratio": 0.4,
+    },
+    "금강": {
+        "name":          "금강",
+        "type":          "ally",
+        "level":         82,
+        "phys_level":    86,
+        "magic_level":   72,
+        "hp_max":        5560,
+        "sprite":        "assets/super_fight_girl.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.4,
     },
 }
 
@@ -110,6 +279,10 @@ class Combatant:
         self.magic_level = defn.get("magic_level", 0)
         self.hp_max      = defn["hp_max"]
         self.hp          = defn["hp_max"]
+        self.overview    = defn.get("overview", [])
+        self.passives    = defn.get("passives", [])
+        self.buffs       = defn.get("buffs", {})
+        self.skills      = defn.get("skills", [])
         self.sprite      = None
         self.sprite_orig = None
         self._load_sprite(defn["sprite"], max_sprite_w, max_sprite_h)
@@ -120,7 +293,17 @@ class Combatant:
                 img = pygame.image.load(path).convert_alpha()
                 self.sprite_orig = img
                 iw, ih = img.get_size()
-                scale = min(max_w / iw, max_h / ih)
+                # sprite_scale이 있으면 W/H 비율 기준, 없으면 max_w/h 기준
+                scale_ratio = self.defn.get("sprite_scale", None)
+                if scale_ratio is not None:
+                    from pygame import display
+                    info = display.Info()
+                    W, H = info.current_w, info.current_h
+                    sw = int(W * scale_ratio)
+                    sh = int(H * scale_ratio)
+                    scale = min(sw / iw, sh / ih)
+                else:
+                    scale = min(max_w / iw, max_h / ih)
                 self.sprite = pygame.transform.smoothscale(
                     img, (int(iw * scale), int(ih * scale))
                 )
@@ -154,7 +337,7 @@ COMPENDIUM = {
                         "직위: 기사단장",
                         "설명: 왕국 기사단의 최연소 단장입니다.",
                         "판타지아의 가장 강한 이들 중 하나입니다.",
-                        "능력치: 레벨 100 | P 100 | M 100"
+                        "능력치: LV 100 | P 100 | M 100"
                     ]
                 }
             }
@@ -633,9 +816,12 @@ class BattleScreen:
         self.target_selected = 0
         self.UI_ITEMS        = ["공격", "수비", "아이템"]
 
-        self.inspect_enemy  = None
-        self.inspect_tab    = 0
-        self.inspect_sprite = None
+        self.inspect_enemy   = None
+        self.inspect_ally    = None
+        self.inspect_tab     = 0
+        self.inspect_sprite  = None
+        self.inspect_scroll  = 0
+        self._underline_rects = []
 
     def _ui_rect(self):
         W, H = self.W, self.H
@@ -656,54 +842,128 @@ class BattleScreen:
         e = self.enemies[i]
         H = self.H
         if e.sprite:
-            return e.sprite.get_rect(midbottom=(ex, ey + int(H * 0.08)))
+            full = e.sprite.get_rect(midbottom=(ex, ey + int(H * 0.08)))
+            ratio = e.defn.get("click_w_ratio", 1.0)
+            new_w = int(full.width * ratio)
+            return pygame.Rect(full.centerx - new_w // 2, full.top, new_w, full.height)
         return pygame.Rect(ex - 40, ey - 80, 80, 80)
 
-    def _open_inspect(self, enemy_idx):
-        e = self.enemies[enemy_idx]
-        self.inspect_enemy = e
-        self.inspect_tab   = 0
+    def _ally_sprite_rect(self, i):
+        positions = self._ally_positions()
+        if i >= len(positions):
+            return None
+        ax, ay = positions[i]
+        a = self.allies[i]
+        if a.sprite:
+            flipped = pygame.transform.flip(a.sprite, True, False)
+            full  = flipped.get_rect(midbottom=(ax, ay))
+            ratio = a.defn.get("click_w_ratio", 1.0)
+            new_w = int(full.width * ratio)
+            return pygame.Rect(full.centerx - new_w // 2, full.top, new_w, full.height)
+        return pygame.Rect(ax - 30, ay - 60, 60, 60)
+
+    def _open_inspect(self, combatant):
+        self.inspect_enemy  = None
+        self.inspect_ally   = None
+        self.inspect_tab    = 0
         W, H = self.W, self.H
-        if e.sprite_orig:
-            iw, ih   = e.sprite_orig.get_size()
+        if combatant.ctype == "player":
+            self.inspect_ally = combatant
+        else:
+            self.inspect_enemy = combatant
+        if combatant.sprite_orig:
+            iw, ih   = combatant.sprite_orig.get_size()
             target_h = int(H * 0.9)
             target_w = int(W * 0.48)
             scale    = min(target_w / iw, target_h / ih)
             self.inspect_sprite = pygame.transform.smoothscale(
-                e.sprite_orig, (int(iw * scale), int(ih * scale))
+                combatant.sprite_orig, (int(iw * scale), int(ih * scale))
             )
         else:
             self.inspect_sprite = None
 
+    def _inspect_target(self):
+        """현재 열람 중인 Combatant 반환"""
+        return self.inspect_enemy or self.inspect_ally
+
+    def _close_inspect(self):
+        self.inspect_enemy  = None
+        self.inspect_ally   = None
+        self.inspect_sprite = None
+
     def handle_event(self, event):
-        if self.inspect_enemy is not None:
+        if self._inspect_target() is not None:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.inspect_enemy = None
+                    self._close_inspect()
                 elif event.key in (pygame.K_LEFT, pygame.K_a):
                     self.inspect_tab = (self.inspect_tab - 1) % len(self.TAB_NAMES)
+                    self.inspect_scroll = 0
                 elif event.key in (pygame.K_RIGHT, pygame.K_d):
                     self.inspect_tab = (self.inspect_tab + 1) % len(self.TAB_NAMES)
+                    self.inspect_scroll = 0
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+                scroll_dir = -1 if event.button == 4 else 1
+                H = self.H
+                W = self.W
+                pad         = int(W * 0.02)
+                left_w      = int(W * 0.48)
+                info_w      = W - pad * 2 - left_w
+                tab_total_w = info_w - pad * 2
+                tab_w       = tab_total_w // len(self.TAB_NAMES)
+                tabs_total_w = tab_w * len(self.TAB_NAMES)
+                bar_y       = pad + int(H * 0.22)
+                bar_h       = int(H * 0.03)
+                tab_y       = bar_y + bar_h + int(H * 0.03)
+                tab_h       = int(H * 0.06)
+                content_y   = tab_y + tab_h
+                content_h   = H - pad * 2 - content_y
+                c = self._inspect_target()
+                if self.inspect_tab == 2 and c and c.passives:
+                    gap_name  = int(H * 0.035)
+                    gap_desc  = int(H * 0.03)
+                    gap_block = int(H * 0.015)
+                    total = int(H * 0.02)
+                    for passive in c.passives:
+                        total += gap_name + len(passive["desc"]) * gap_desc + gap_block * 2
+                    max_scroll = max(0, total - content_h)
+                elif self.inspect_tab == 1 and c and c.skills:
+                    icon_size = int(H * 0.08)
+                    gap_line  = int(H * 0.03)
+                    gap_block = int(H * 0.015)
+                    total = int(H * 0.02)
+                    for skill in c.skills:
+                        block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(skill["desc"]) * gap_line)
+                        total += block_h + gap_block * 2
+                    max_scroll = max(0, total - content_h)
+                elif self.inspect_tab == 0 and c and c.overview:
+                    line_h = int(H * 0.04)
+                    total  = int(H * 0.025)
+                    for line in c.overview:
+                        total += line_h // 2 if line == "" else line_h
+                    max_scroll = max(0, total - content_h)
+                else:
+                    max_scroll = 0
+                self.inspect_scroll = max(0, min(max_scroll, self.inspect_scroll + scroll_dir * 20))
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
                 W, H = self.W, self.H
-                pad      = int(W * 0.02)
-                left_w   = int(W * 0.48)
-                info_x   = pad + left_w
-                info_w   = W - pad * 2 - left_w
-                tab_total_w  = info_w - pad * 2
-                tab_w        = tab_total_w // len(self.TAB_NAMES)
-                bar_y    = pad + int(H * 0.22)
-                bar_h    = int(H * 0.03)
-                tab_y    = bar_y + bar_h + int(H * 0.03)
-                tab_h    = int(H * 0.06)
-                mx, my   = event.pos
+                pad         = int(W * 0.02)
+                left_w      = int(W * 0.48)
+                info_x      = pad + left_w
+                info_w      = W - pad * 2 - left_w
+                tab_total_w = info_w - pad * 2
+                tab_w       = tab_total_w // len(self.TAB_NAMES)
+                bar_y       = pad + int(H * 0.22)
+                bar_h       = int(H * 0.03)
+                tab_y       = bar_y + bar_h + int(H * 0.03)
+                tab_h       = int(H * 0.06)
                 if tab_y <= my <= tab_y + tab_h:
                     for ti in range(len(self.TAB_NAMES)):
                         tx = info_x + pad + ti * tab_w
                         if tx <= mx <= tx + tab_w:
                             self.inspect_tab = ti
-                else:
-                    self.inspect_enemy = None
+                            self.inspect_scroll = 0
             return None
 
         if event.type == pygame.KEYDOWN:
@@ -749,10 +1009,17 @@ class BattleScreen:
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
+            # 적 스프라이트 클릭
             for i in range(len(self.enemies)):
                 r = self._enemy_sprite_rect(i)
                 if r and r.collidepoint(mx, my):
-                    self._open_inspect(i)
+                    self._open_inspect(self.enemies[i])
+                    return None
+            # 아군 스프라이트 클릭
+            for i in range(len(self.allies)):
+                r = self._ally_sprite_rect(i)
+                if r and r.collidepoint(mx, my):
+                    self._open_inspect(self.allies[i])
                     return None
 
             if self.state == self.STATE_MENU:
@@ -799,6 +1066,193 @@ class BattleScreen:
         spacing = int(W * self.ALLY_SPACING)
         start_x = int(W * 0.1)
         return [(start_x + i * spacing, foot_y) for i in range(len(self.allies))]
+
+    def _draw_inspect_overlay(self, c):
+        """적/아군 공통 열람 오버레이"""
+        W, H = self.W, self.H
+        surf = self.screen
+
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 180))
+        surf.blit(dim, (0, 0))
+
+        pad   = int(W * 0.02)
+        panel = pygame.Rect(pad, pad, W - pad * 2, H - pad * 2)
+        pygame.draw.rect(surf, WHITE, panel)
+        pygame.draw.rect(surf, BLACK, panel, 2)
+
+        left_w = int(W * 0.48)
+        info_x = pad + left_w
+        info_w = panel.width - left_w
+
+        # 좌측 스프라이트
+        if self.inspect_sprite:
+            sr = self.inspect_sprite.get_rect(midbottom=(pad + left_w // 2, panel.bottom - pad))
+            surf.blit(self.inspect_sprite, sr)
+
+        # 이름 / 스탯
+        name_y = pad + int(H * 0.09)
+        stat_y = pad + int(H * 0.17)
+        bar_y  = pad + int(H * 0.22)
+
+        name_str = f"{c.name}"
+        stat_str = f"LV.{c.level}   P {c.phys_level}   M {c.magic_level}"
+        draw_text_left(surf, name_str, self.fonts["title"], BLACK, info_x + pad, name_y)
+        draw_text_left(surf, stat_str, self.fonts["menu"],  BLACK, info_x + pad, stat_y)
+
+        # 체력바
+        tab_total_w  = info_w - pad * 2
+        tab_w        = tab_total_w // len(self.TAB_NAMES)
+        tabs_total_w = tab_w * len(self.TAB_NAMES)
+        bar_w = tabs_total_w
+        bar_h = int(H * 0.03)
+        bar_x = info_x + pad
+        bar_color = GREEN if c.ctype == "player" else RED
+        pygame.draw.rect(surf, GRAY,      (bar_x, bar_y, bar_w, bar_h))
+        fill = int(bar_w * c.hp / c.hp_max)
+        pygame.draw.rect(surf, bar_color, (bar_x, bar_y, fill, bar_h))
+        pygame.draw.rect(surf, BLACK,     (bar_x, bar_y, bar_w, bar_h), 2)
+        hp_str = f"{c.hp} / {c.hp_max}"
+        draw_text(surf, hp_str, self.fonts["hint"], BLACK,
+                  bar_x + bar_w // 2, bar_y + bar_h // 2)
+
+        # 탭
+        tab_y = bar_y + bar_h + int(H * 0.03)
+        tab_h = int(H * 0.06)
+        for ti, tname in enumerate(self.TAB_NAMES):
+            tx   = info_x + pad + ti * tab_w
+            trec = pygame.Rect(tx, tab_y, tab_w, tab_h)
+            if ti == self.inspect_tab:
+                pygame.draw.rect(surf, BLACK, trec)
+                draw_text(surf, tname, self.fonts["menu"], WHITE, trec.centerx, trec.centery)
+            else:
+                pygame.draw.rect(surf, WHITE, trec)
+                pygame.draw.rect(surf, BLACK, trec, 1)
+                draw_text(surf, tname, self.fonts["menu"], BLACK, trec.centerx, trec.centery)
+
+        # 탭 내용
+        content_y    = tab_y + tab_h
+        content_rect = pygame.Rect(info_x + pad, content_y,
+                                   tabs_total_w, panel.bottom - pad - content_y)
+        pygame.draw.rect(surf, WHITE, content_rect)
+        pygame.draw.rect(surf, BLACK, content_rect, 1)
+
+        if self.inspect_tab == 0:
+            if c.overview:
+                line_h = int(H * 0.04)
+                tx = content_rect.left + int(W * 0.015)
+                ty = content_rect.top + int(H * 0.025) - self.inspect_scroll
+                old_clip = surf.get_clip()
+                surf.set_clip(content_rect)
+                for line in c.overview:
+                    if line == "":
+                        ty += line_h // 2
+                    else:
+                        if content_rect.top <= ty <= content_rect.bottom:
+                            draw_text_left(surf, line, self.fonts["hint_bold"], BLACK, tx, ty + line_h // 2)
+                        ty += line_h
+                surf.set_clip(old_clip)
+            else:
+                draw_text(surf, "준비 중입니다.", self.fonts["menu"], GRAY_D,
+                          content_rect.centerx, content_rect.centery)
+        elif self.inspect_tab == 1:
+            if c.skills:
+                icon_size   = int(H * 0.08)
+                gap_line    = int(H * 0.03)
+                gap_block   = int(H * 0.015)
+                tx          = content_rect.left + int(W * 0.015)
+                ty          = content_rect.top + int(H * 0.02) - self.inspect_scroll
+                old_clip    = surf.get_clip()
+                surf.set_clip(content_rect)
+                for si, skill in enumerate(c.skills):
+                    # 아이콘 사각형 + 스프라이트
+                    icon_rect = pygame.Rect(tx, ty, icon_size, icon_size)
+                    if content_rect.top <= ty + icon_size <= content_rect.bottom or content_rect.top <= ty <= content_rect.bottom:
+                        pygame.draw.rect(surf, GRAY,  icon_rect)
+                        pygame.draw.rect(surf, BLACK, icon_rect, 1)
+                        spr_path = skill.get("sprite", "")
+                        if os.path.exists(spr_path):
+                            try:
+                                spr_img = pygame.image.load(spr_path).convert_alpha()
+                                iw, ih  = spr_img.get_size()
+                                scale   = min(icon_size / iw, icon_size / ih)
+                                spr_img = pygame.transform.smoothscale(spr_img, (int(iw * scale), int(ih * scale)))
+                                spr_r   = spr_img.get_rect(center=icon_rect.center)
+                                surf.blit(spr_img, spr_r)
+                            except Exception:
+                                pass
+
+                    # 스킬명 + 위력/유형 한 줄
+                    info_x  = tx + icon_size + int(W * 0.01)
+                    name_y  = ty + int(icon_size * 0.2)
+                    tags_str = "  |  ".join(f"'{t}'" for t in skill["tags"]) if skill["tags"] else ""
+                    hits_str = f"  |  {skill['hits']}회" if skill["hits"] > 1 else ""
+                    elements = f"위력 {skill['power']}  |  {skill['type']}  |  {skill['target']}{hits_str}"
+                    if tags_str:
+                        elements += f"  |  {tags_str}"
+                    if content_rect.top <= name_y <= content_rect.bottom:
+                        draw_text_left(surf, skill['name'], self.fonts["hint_bold"], BLACK, info_x, name_y)
+                    elem_y = name_y + int(H * 0.033)
+                    if content_rect.top <= elem_y <= content_rect.bottom:
+                        draw_text_left_underline(surf, elements, self.fonts["small_bold"], BLACK, info_x, elem_y)
+
+                    # 설명
+                    desc_y = name_y + int(H * 0.033) + int(H * 0.035)
+                    for line in skill["desc"]:
+                        if content_rect.top <= desc_y <= content_rect.bottom:
+                            draw_text_left_underline(surf, line, self.fonts["small_bold"], BLACK, info_x, desc_y)
+                        desc_y += gap_line
+
+                    block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(skill["desc"]) * gap_line)
+                    ty += block_h + gap_block
+
+                    # 구분선 (마지막 제외)
+                    if si < len(c.skills) - 1:
+                        if content_rect.top <= ty <= content_rect.bottom:
+                            pygame.draw.line(surf, GRAY,
+                                (content_rect.left + int(W * 0.01), ty),
+                                (content_rect.right - int(W * 0.01), ty), 1)
+                        ty += gap_block
+                surf.set_clip(old_clip)
+            else:
+                draw_text(surf, "준비 중입니다.", self.fonts["menu"], GRAY_D,
+                          content_rect.centerx, content_rect.centery)
+        elif self.inspect_tab == 2:
+            if c.passives:
+                tx         = content_rect.left + int(W * 0.015)
+                ty         = content_rect.top + int(H * 0.02) - self.inspect_scroll
+                gap_name   = int(H * 0.035)
+                gap_desc   = int(H * 0.03)
+                gap_block  = int(H * 0.015)
+                old_clip   = surf.get_clip()
+                surf.set_clip(content_rect)
+                self._underline_rects = []
+                for pi, passive in enumerate(c.passives):
+                    if content_rect.top <= ty <= content_rect.bottom:
+                        draw_text_left(surf, f"<{passive['name']}>", self.fonts["hint_bold"], BLACK, tx, ty + gap_name // 2)
+                    ty += gap_name
+                    for line in passive["desc"]:
+                        if content_rect.top <= ty <= content_rect.bottom:
+                            if line == "":
+                                ty += gap_desc // 2
+                                continue
+                            rects = draw_text_left_underline(surf, line, self.fonts["small_bold"], BLACK, tx, ty + gap_desc // 2)
+                            for r, word in rects:
+                                self._underline_rects.append((r, word, c))
+                        ty += gap_desc
+                    ty += gap_block
+                    # 마지막 패시브엔 구분선 없음
+                    if pi < len(c.passives) - 1:
+                        if content_rect.top <= ty <= content_rect.bottom:
+                            pygame.draw.line(surf, GRAY,
+                                (content_rect.left + int(W * 0.01), ty),
+                                (content_rect.right - int(W * 0.01), ty), 1)
+                        ty += gap_block
+                surf.set_clip(old_clip)
+            else:
+                draw_text(surf, "준비 중입니다.", self.fonts["menu"], GRAY_D,
+                          content_rect.centerx, content_rect.centery)
+
 
     def draw(self):
         W, H = self.W, self.H
@@ -888,76 +1342,10 @@ class BattleScreen:
                     else:
                         draw_text(surf, e.name, self.fonts["menu"], BLACK, tr.centerx, cy)
 
-        # ── 적 정보 오버레이 ──────────────────────────────────────
-        if self.inspect_enemy is not None:
-            e = self.inspect_enemy
-            dim = pygame.Surface((W, H), pygame.SRCALPHA)
-            dim.fill((0, 0, 0, 180))
-            surf.blit(dim, (0, 0))
-
-            pad   = int(W * 0.02)
-            panel = pygame.Rect(pad, pad, W - pad * 2, H - pad * 2)
-            pygame.draw.rect(surf, WHITE, panel)
-            pygame.draw.rect(surf, BLACK, panel, 2)
-
-            left_w = int(W * 0.48)
-            info_x = pad + left_w
-            info_w = panel.width - left_w
-
-            if self.inspect_sprite:
-                sr = self.inspect_sprite.get_rect(midbottom=(pad + left_w // 2, panel.bottom - pad))
-                surf.blit(self.inspect_sprite, sr)
-
-            # 각 요소 y 독립 설정
-            name_y = pad + int(H * 0.09)   # ← 이름 y
-            stat_y = pad + int(H * 0.17)   # ← LV/P/M y
-            bar_y  = pad + int(H * 0.22)   # ← 체력바 y
-
-            name_str = f"{e.name}"
-            stat_str = f"LV.{e.level}   P {e.phys_level}   M {e.magic_level}"
-            draw_text_left(surf, name_str, self.fonts["title"], BLACK, info_x + pad, name_y)
-            draw_text_left(surf, stat_str, self.fonts["menu"],  BLACK, info_x + pad, stat_y)
-
-            # 체력바
-            tab_total_w  = info_w - pad * 2
-            tab_w        = tab_total_w // len(self.TAB_NAMES)
-            tabs_total_w = tab_w * len(self.TAB_NAMES)
-            bar_w = tabs_total_w
-            bar_h = int(H * 0.03)
-            bar_x = info_x + pad
-            pygame.draw.rect(surf, GRAY,  (bar_x, bar_y, bar_w, bar_h))
-            fill = int(bar_w * e.hp / e.hp_max)
-            pygame.draw.rect(surf, RED,   (bar_x, bar_y, fill, bar_h))
-            pygame.draw.rect(surf, BLACK, (bar_x, bar_y, bar_w, bar_h), 2)
-            hp_str = f"{e.hp} / {e.hp_max}"
-            draw_text(surf, hp_str, self.fonts["hint"], BLACK,
-                      bar_x + bar_w // 2, bar_y + bar_h // 2)
-
-            # 탭
-            tab_y = bar_y + bar_h + int(H * 0.03)
-            tab_h = int(H * 0.06)
-            for ti, tname in enumerate(self.TAB_NAMES):
-                tx   = info_x + pad + ti * tab_w
-                trec = pygame.Rect(tx, tab_y, tab_w, tab_h)
-                if ti == self.inspect_tab:
-                    pygame.draw.rect(surf, BLACK, trec)
-                    draw_text(surf, tname, self.fonts["menu"], WHITE, trec.centerx, trec.centery)
-                else:
-                    pygame.draw.rect(surf, WHITE, trec)
-                    pygame.draw.rect(surf, BLACK, trec, 1)
-                    draw_text(surf, tname, self.fonts["menu"], BLACK, trec.centerx, trec.centery)
-
-            # 탭 내용
-            content_y    = tab_y + tab_h
-            content_rect = pygame.Rect(info_x + pad, content_y,
-                                       tabs_total_w, panel.bottom - pad - content_y)
-            pygame.draw.rect(surf, WHITE, content_rect)
-            pygame.draw.rect(surf, BLACK, content_rect, 1)
-            draw_text(surf, "준비 중입니다.", self.fonts["menu"], GRAY_D,
-                      content_rect.centerx, content_rect.centery)
-
-            draw_text(surf, "Esc / 바깥 클릭  닫기",
-                      self.fonts["hint"], GRAY_D, panel.centerx, panel.bottom - int(H * 0.03))
+        # ── 열람 오버레이 ─────────────────────────────────────────
+        c = self._inspect_target()
+        if c is not None:
+            self._draw_inspect_overlay(c)
 
         draw_text(surf, "Esc  돌아가기",
                   self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.02))
@@ -1064,9 +1452,11 @@ def load_fonts(H):
     def f(size):  return pygame.font.SysFont("malgungothic,nanumgothic,malgun gothic,gulim,sans-serif", size, bold=False)
     def fb(size): return pygame.font.SysFont("malgungothic,nanumgothic,malgun gothic,gulim,sans-serif", size, bold=True)
     return {
-        "title": fb(int(H * 0.08)),
-        "menu":  fb(int(H * 0.038)),
-        "hint":  f(int(H * 0.022)),
+        "title":      fb(int(H * 0.08)),
+        "menu":       fb(int(H * 0.038)),
+        "hint":       f(int(H * 0.022)),
+        "hint_bold":  fb(int(H * 0.022)),
+        "small_bold": fb(int(H * 0.016)),
     }
 
 
@@ -1165,7 +1555,7 @@ def main():
                 elif a == "battle_test":
                     battle_sc = BattleScreen(screen, W, H, fonts,
                                              enemies=["벨라"],
-                                             allies=["주인공"])
+                                             allies=["주인공", "아우렐리우스", "금강"])
                     current = "battle"
 
             elif current == "settings":
