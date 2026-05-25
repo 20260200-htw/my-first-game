@@ -252,17 +252,23 @@ ENEMY_DEFS = {
             },
         ],
     },
-    "벨라_일반": {
+    "말단병사": {
         "title":         "",
-        "name":          "벨라",
+        "name":          "말단병사",
         "type":          "normal",
-        "level":         100,
-        "phys_level":    100,
-        "magic_level":   100,
-        "hp_max":        10000,
-        "sprite":        "assets/knight_leader.png",
-        "sprite_scale":  0.5625,
+        "level":         50,
+        "phys_level":    53,
+        "magic_level":   22,
+        "hp_max":        1340,
+        "sprite":        "assets/knight_maldan.png",
+        "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
+        "overview": [
+            "왕국 기사단의 말단병사",
+            "",
+            "중앙 왕국 기사단의 가장 낮은 계급의 기사입니다.",
+            "기사단장의 명령으로 이번 전투에는 참전하지 않습니다.",
+        ],
     },
     "포식 슬라임": {
         "title":         "",
@@ -2208,7 +2214,7 @@ def main():
                     current = "placeholder"
                 elif a == "battle_test":
                     battle_sc = BattleScreen(screen, W, H, fonts,
-                                             enemies=["벨라", "포식 슬라임", "포식 슬라임", "위장 슬라임", "위장 슬라임"],
+                                             enemies=["벨라", "말단병사", "말단병사", "말단병사", "말단병사"],
                                              allies=["주인공", "아우렐리우스", "금강"])
                     current = "battle"
 
