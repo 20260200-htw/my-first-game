@@ -213,7 +213,7 @@ ENEMY_DEFS = {
             },
             {
                 "name":   "이번 건 피할 수 없을 겁니다",
-                "power":  30,
+                "power":  40,
                 "type":   "물리",
                 "target": "5인",
                 "hits":   1,
