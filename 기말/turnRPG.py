@@ -238,6 +238,66 @@ ENEMY_DEFS = {
         "sprite_scale":  0.5625,
         "click_w_ratio": 0.2,
     },
+    "포식 슬라임": {
+        "title":         "",
+        "name":          "포식 슬라임",
+        "type":          "normal",
+        "level_min":     12,
+        "level_max":     17,
+        "hp_min":        100,
+        "hp_max_range":  132,
+        "phys_min":      11,
+        "phys_max":      13,
+        "magic_min":     2,
+        "magic_max":     3,
+        "level":         12,
+        "phys_level":    11,
+        "magic_level":   2,
+        "hp_max":        100,
+        "sprite":        "assets/slime_eat1.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.2,
+    },
+    "위장 슬라임": {
+        "title":         "",
+        "name":          "위장 슬라임",
+        "type":          "normal",
+        "level_min":     18,
+        "level_max":     23,
+        "hp_min":        140,
+        "hp_max_range":  177,
+        "phys_min":      17,
+        "phys_max":      21,
+        "magic_min":     2,
+        "magic_max":     3,
+        "level":         18,
+        "phys_level":    17,
+        "magic_level":   2,
+        "hp_max":        140,
+        "sprite":        "assets/slime_eat2.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.2,
+    },
+    "의태 슬라임": {
+        "title":         "",
+        "name":          "의태 슬라임",
+        "type":          "normal",
+        "level_min":     24,
+        "level_max":     30,
+        "hp_min":        330,
+        "hp_max_range":  400,
+        "phys_min":      26,
+        "phys_max":      35,
+        "magic_min":     21,
+        "magic_max":     27,
+        "level":         24,
+        "phys_level":    26,
+        "magic_level":   21,
+        "hp_max":        330,
+        "sprite":        "assets/slime_eat3.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.2,
+    },
 }
 
 ALLY_DEFS = {
@@ -368,6 +428,119 @@ ALLY_DEFS = {
             },
         ]
     },
+    "마리 솔": {
+        "name":          "마리 솔",
+        "type":          "ally",
+        "level":         83,
+        "phys_level":    82,
+        "magic_level":   85,
+        "hp_max":        5800,
+        "sprite":        "assets/super_sea_girl.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.2,
+        "overview": [
+            "마리 솔",
+            "",
+            "그녀는 남부의 신호 입니다.",
+            "해적이지만 악인보다는 선인에 가까운 자입니다.",
+            "",
+            "남부는 수 많은 섬으로 이루어진 구역이기 때문에",
+            "그녀는 남부 섬들 간의 교류와 마물의 토벌을 책임지고 있습니다.",
+            "",
+            "해적이긴 하지만요.",
+        ],
+        "passives": [
+            {
+                "name": "왕국 기사단장",
+                "desc": [
+                    "모든 피해로부터 받는 피해가 30% 감소합니다.",
+                    "자신이 적에게 가하는 모든 피해가 50% 증가합니다.",
+                ]
+            },
+            {
+                "name": "기사단장의 명령",
+                "desc": [
+                    "이번 전투에서 왕국 기사단이 참전하지 않습니다.",
+                    "또한 벨라가 '시험' 을 얻습니다.",
+                ]
+            },
+            {
+                "name": "마력 발산 - 지옥불",
+                "desc": [
+                    "'마력 발산' 상태가 되면 모든 스킬의 최종 위력이 30 증가합니다.",
+                    "매 턴이 시작될 때마다 (물리 레벨+마법 레벨)*1 만큼 모든 적에게 마법 피해를 입힙니다.",
+                ]
+            },
+            {
+                "name": "지옥불 결계",
+                "desc": [
+                    "매 턴이 시작될 때마다 보호막을 1000 만큼 얻습니다.",
+                    "적에게 피해를 받으면 즉시 파괴되며, 다음 턴이 되기 전까지 보호막을 얻지 않습니다.",
+                ]
+            },
+            {
+                "name": "전황 분석",
+                "desc": [
+                    "매 턴이 시작될 때마다 '전황 분석' 중첩을 1 얻습니다.",
+                    "중첩 당 자신이 가하는 모든 피해가 5% 증가합니다.",
+                ]
+            },
+        ]
+    },
+    "막심 오그네프": {
+        "name":          "막심 오그네프",
+        "type":          "ally",
+        "level":         91,
+        "phys_level":    87,
+        "magic_level":   93,
+        "hp_max":        6200,
+        "sprite":        "assets/super_snow_man.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.2,
+        "overview": [
+            "막심 오그네프",
+            "",
+            "그는 북부의 신호 입니다.",
+            "북부는 마물의 출현이 잦기 때문에 항상 긴장 상태를 유지합니다.",
+        ],
+        "passives": [
+            {
+                "name": "왕국 기사단장",
+                "desc": [
+                    "모든 피해로부터 받는 피해가 30% 감소합니다.",
+                    "자신이 적에게 가하는 모든 피해가 50% 증가합니다.",
+                ]
+            },
+            {
+                "name": "기사단장의 명령",
+                "desc": [
+                    "이번 전투에서 왕국 기사단이 참전하지 않습니다.",
+                    "또한 벨라가 '시험' 을 얻습니다.",
+                ]
+            },
+            {
+                "name": "마력 발산 - 지옥불",
+                "desc": [
+                    "'마력 발산' 상태가 되면 모든 스킬의 최종 위력이 30 증가합니다.",
+                    "매 턴이 시작될 때마다 (물리 레벨+마법 레벨)*1 만큼 모든 적에게 마법 피해를 입힙니다.",
+                ]
+            },
+            {
+                "name": "지옥불 결계",
+                "desc": [
+                    "매 턴이 시작될 때마다 보호막을 1000 만큼 얻습니다.",
+                    "적에게 피해를 받으면 즉시 파괴되며, 다음 턴이 되기 전까지 보호막을 얻지 않습니다.",
+                ]
+            },
+            {
+                "name": "전황 분석",
+                "desc": [
+                    "매 턴이 시작될 때마다 '전황 분석' 중첩을 1 얻습니다.",
+                    "중첩 당 자신이 가하는 모든 피해가 5% 증가합니다.",
+                ]
+            },
+        ]
+    },
 }
 
 
@@ -376,15 +549,29 @@ ALLY_DEFS = {
 # ══════════════════════════════════════════════════════════════════
 class Combatant:
     def __init__(self, defn, W, H, max_sprite_w, max_sprite_h):
+        import random
         self.defn        = defn
         self.title       = defn.get("title", "")
         self.name        = defn["name"]
         self.ctype       = defn["type"]
-        self.level       = defn.get("level", 1)
-        self.phys_level  = defn.get("phys_level", 0)
-        self.magic_level = defn.get("magic_level", 0)
-        self.hp_max      = defn["hp_max"]
-        self.hp          = defn["hp_max"]
+
+        # 레벨 범위가 있으면 랜덤 결정
+        if "level_min" in defn:
+            lv_min = defn["level_min"]
+            lv_max = defn["level_max"]
+            t = (random.randint(lv_min, lv_max) - lv_min) / max(1, lv_max - lv_min)
+            self.level       = random.randint(lv_min, lv_max)
+            self.phys_level  = round(defn["phys_min"]  + t * (defn["phys_max"]  - defn["phys_min"]))
+            self.magic_level = round(defn["magic_min"] + t * (defn["magic_max"] - defn["magic_min"]))
+            hp = round(defn["hp_min"] + t * (defn["hp_max_range"] - defn["hp_min"]))
+            self.hp_max      = hp
+        else:
+            self.level       = defn.get("level", 1)
+            self.phys_level  = defn.get("phys_level", 0)
+            self.magic_level = defn.get("magic_level", 0)
+            self.hp_max      = defn["hp_max"]
+
+        self.hp          = self.hp_max
         self.overview    = defn.get("overview", [])
         self.passives    = defn.get("passives", [])
         self.buffs       = defn.get("buffs", {})
@@ -421,6 +608,78 @@ class Combatant:
 # ══════════════════════════════════════════════════════════════════
 #   도감 데이터
 # ══════════════════════════════════════════════════════════════════
+GLOSSARY = {
+    "세계": {
+        "판타지아": {
+            "신호": {
+                "image": "",
+                "description": [
+                    "신호",
+                    "",
+                    "판타지아를 5개의 구역으로 나누어 담당하는 이들입니다.",
+                    "중앙 왕국에 의해 임명되며, 이는 거절할 수 없는 명령입니다.",
+                    "세계의 한 구역을 담당하는 만큼, 비견될 이가 없을 수준의 강자들 입니다.",
+                ]
+            },
+        },
+    },
+    "전투": {
+        "레벨": {
+            "image": "",
+            "description": [
+                "레벨",
+                "",
+                "대상의 종합적인 전투력을 나타낸 수치입니다.",
+                "같은 자릿수 내에서의 차이는 크지 않지만, 자릿수가 달라지면 압도적인 차이를 가집니다.",
+            ]
+        },
+        "물리 레벨": {
+            "image": "",
+            "description": [
+                "물리 레벨",
+                "",
+                "대상의 육체, 힘, 신체 능력 등을 나타낸 수치입니다.",
+                "물리 스킬의 피해량을 결정하며, 물리 레벨에 따라 물리 스킬의 위력도 증가합니다.",
+            ]
+        },
+        "마법 레벨": {
+            "image": "",
+            "description": [
+                "마법 레벨",
+                "",
+                "대상의 마력, 마법의 수준 등을 나타낸 수치입니다.",
+                "마법 스킬의 피해량을 결정하며, 마법 레벨에 따라 마법 스킬의 위력도 증가합니다.",
+            ]
+        },
+        "필중": {
+            "image": "",
+            "description": [
+                "필중",
+                "",
+                "적의 회피를 무시하고 공격이 반드시 적에게 명중합니다.",
+            ]
+        },
+        "난사": {
+            "image": "",
+            "description": [
+                "난사",
+                "",
+                "공격이 빗나가기 전까지 계속해서 공격합니다.",
+                "매 공격마다 해당 스킬의 명중률이 10%씩 감소합니다.",
+            ]
+        },
+        "(판타지아) 마력 발산": {
+            "image": "",
+            "description": [
+                "(판타지아) 마력 발산",
+                "",
+                "마력이 활성화 상태가 되었을 때 마력을 뿜어내는 것을 뜻합니다.",
+                "마력에 능하고 이를 뿜어내도 될 만큼의 마력을 가진 강자만이 구사할 수 있습니다.",
+            ]
+        },
+    },
+}
+
 COMPENDIUM = {
     "판타지아": {
         "중앙": {
@@ -429,17 +688,18 @@ COMPENDIUM = {
                     "기사단장": {
                         "image": "assets/knight_leader.png",
                         "description": [
-                            "이름: 벨라",
+                            "이름: 벨라 트릭스",
                             "나이: 21",
                             "신장: 177cm",
                             "소속: 왕국 기사단",
                             "직위: 기사단장",
                             "설명: 왕국 기사단의 최연소 단장입니다.",
-                            "판타지아의 가장 강한 이들 중 하나입니다.",
+                            "판타지아의 최강자라고 불리는 자입니다.",
                             "능력치: LV 100 | P 100 | M 100"
                         ]
                     }
-                }
+                },
+                "중앙의 신호": None,
             },
             "마족": None,
             "마물": None,
@@ -483,14 +743,75 @@ COMPENDIUM = {
             "마물": None,
         },
         "남부": {
-            "인간": None,
+            "인간": {
+                "남부의 신호": {
+                    "image": "assets/super_sea_girl.png",
+                    "description": [
+                        "이름: 마리 솔",
+                        "나이: 24",
+                        "신장: 167cm",
+                        "소속: 남부",
+                        "직위: 남부의 신호이자 엘 로마올라스의 선장",
+                        "설명: 남부의 신호입니다.",
+                        "판타지아에서 손에 꼽는 강자들 중 하나입니다.",
+                        "능력치: LV 83 | P 82 | M 85"
+                    ]
+                },
+            },
             "마족": None,
             "마물": None,
         },
         "북부": {
-            "인간": None,
+            "인간": {
+                "북부의 신호": {
+                    "image": "assets/super_snow_man.png",
+                    "description": [
+                        "이름: 막심 오그네프",
+                        "나이: 31",
+                        "신장: 181cm",
+                        "소속: 북부",
+                        "직위: 북부의 신호이자 북부 전선의 지휘관",
+                        "설명: 북부의 신호입니다.",
+                        "판타지아에서 손에 꼽는 강자들 중 하나입니다.",
+                        "능력치: LV 91 | P 87 | M 93"
+                    ]
+                },
+            },
             "마족": None,
-            "마물": None,
+            "마물": {
+                "포식 슬라임": {
+                    "image": "assets/slime_eat1.png",
+                    "description": [
+                        "이름: 포식 슬라임",
+                        "분류: 마물",
+                        "출현: 북부",
+                        "레벨: 12 ~ 17",
+                        "설명: 다른 마물이나 인간을 포식하여 성장합니다.",
+                    ]
+                },
+                "위장 슬라임": {
+                    "image": "assets/slime_eat2.png",
+                    "description": [
+                        "이름: 위장 슬라임",
+                        "분류: 마물",
+                        "출현: 북부",
+                        "레벨: 18 ~ 23",
+                        "설명: 인간을 포식하며 학습한 듯 보입니다.",
+                        "포식 슬라임의 상위 개체 입니다.",
+                    ]
+                },
+                "의태 슬라임": {
+                    "image": "assets/slime_eat3.png",
+                    "description": [
+                        "이름: 의태 슬라임",
+                        "분류: 마물",
+                        "출현: 북부",
+                        "레벨: 24 ~ 30",
+                        "설명: 학습을 통해 인간의 모습을 모방하고 있습니다.",
+                        "위장 슬라임의 상위 개체 입니다.",
+                    ]
+                },
+            },
         },
     },
     "2번째 세계": None,
@@ -504,7 +825,7 @@ COMPENDIUM = {
 #   타이틀 화면
 # ══════════════════════════════════════════════════════════════════
 class TitleScreen:
-    ITEMS = ["게임 시작", "갤러리", "설정", "게임 종료"]
+    ITEMS = ["게임 시작", "아카이브", "설정", "게임 종료"]
 
     def __init__(self, screen, W, H, fonts):
         self.screen = screen
@@ -736,7 +1057,7 @@ class SettingsScreen:
 #   갤러리 화면
 # ══════════════════════════════════════════════════════════════════
 class GalleryScreen:
-    ITEMS = ["스토리 컷신", "도감", "돌아가기"]
+    ITEMS = ["용어", "도감", "돌아가기"]
 
     def __init__(self, screen, W, H, fonts):
         self.screen = screen
@@ -771,7 +1092,7 @@ class GalleryScreen:
         return int(self.H * 0.35) + i * int(self.H * 0.1)
 
     def _action(self):
-        return ["cutscene", "compendium", "back"][self.selected]
+        return ["glossary", "compendium", "back"][self.selected]
 
     def update(self, dt): pass
 
@@ -780,7 +1101,7 @@ class GalleryScreen:
         surf = self.screen
         surf.fill(WHITE)
 
-        draw_text(surf, "갤러리", self.fonts["title"], BLACK, W // 2, int(H * 0.2))
+        draw_text(surf, "아카이브", self.fonts["title"], BLACK, W // 2, int(H * 0.2))
         pygame.draw.line(surf, BLACK, (W // 2 - 150, int(H * 0.3)), (W // 2 + 150, int(H * 0.3)), 1)
 
         for i, item in enumerate(self.ITEMS):
@@ -808,32 +1129,58 @@ class CompendiumMenuScreen:
         self.title    = title
         self.items    = items
         self.selected = 0
+        self.scroll   = 0
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_UP, pygame.K_w):
                 self.selected = (self.selected - 1) % len(self.items)
+                self._clamp_scroll()
             elif event.key in (pygame.K_DOWN, pygame.K_s):
                 self.selected = (self.selected + 1) % len(self.items)
+                self._clamp_scroll()
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 _, val = self.items[self.selected]
                 if val is not None:
                     return ("select", val)
             elif event.key == pygame.K_ESCAPE:
                 return ("back", None)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+            if event.button == 4:
+                self.scroll = max(0, self.scroll - 1)
+            else:
+                max_scroll = max(0, len(self.items) - self._visible_count())
+                self.scroll = min(max_scroll, self.scroll + 1)
         elif event.type == pygame.MOUSEMOTION:
             _, my = event.pos
             for i in range(len(self.items)):
                 if abs(my - self._cy(i)) < 24:
-                    self.selected = i
+                    self.selected = i + self.scroll
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             _, my = event.pos
-            for i, (_, val) in enumerate(self.items):
+            for i in range(self._visible_count()):
+                idx = i + self.scroll
+                if idx >= len(self.items):
+                    break
                 if abs(my - self._cy(i)) < 24:
-                    self.selected = i
+                    self.selected = idx
+                    _, val = self.items[idx]
                     if val is not None:
                         return ("select", val)
         return None
+
+    def _visible_count(self):
+        gap = int(self.H * 0.09)
+        start = int(self.H * 0.35)
+        return max(1, (self.H - start - int(self.H * 0.1)) // gap)
+
+    def _clamp_scroll(self):
+        vis = self._visible_count()
+        if self.selected < self.scroll:
+            self.scroll = self.selected
+        elif self.selected >= self.scroll + vis:
+            self.scroll = self.selected - vis + 1
+        self.scroll = max(0, self.scroll)
 
     def _cy(self, i):
         start = int(self.H * 0.35)
@@ -850,9 +1197,14 @@ class CompendiumMenuScreen:
         draw_text(surf, self.title, self.fonts["title"], BLACK, W // 2, int(H * 0.2))
         pygame.draw.line(surf, BLACK, (W // 2 - 150, int(H * 0.3)), (W // 2 + 150, int(H * 0.3)), 1)
 
-        for i, (name, val) in enumerate(self.items):
+        vis = self._visible_count()
+        for i in range(vis):
+            idx = i + self.scroll
+            if idx >= len(self.items):
+                break
+            name, val = self.items[idx]
             cy  = self._cy(i)
-            sel = (i == self.selected)
+            sel = (idx == self.selected)
             r   = pygame.Rect(W // 2 - 150, cy - 22, 300, 44)
             if sel:
                 pygame.draw.rect(surf, BLACK, r)
@@ -904,27 +1256,101 @@ class CompendiumDetailScreen:
         surf = self.screen
         surf.fill(WHITE)
 
-        img_area_cx = int(W * 0.25)
-        img_area_cy = int(H * 0.5)
+        cx = W // 2
+        gap = int(W * 0.04)
 
+        # 구분선
+        pygame.draw.line(surf, BLACK, (cx, int(H * 0.1)), (cx, int(H * 0.9)), 1)
+
+        # 스프라이트 (구분선 왼쪽, 오른쪽 끝이 구분선에서 gap만큼)
         if self.image:
-            r = self.image.get_rect(center=(img_area_cx, img_area_cy))
+            r = self.image.get_rect(midright=(cx - gap, H // 2))
             surf.blit(self.image, r)
         else:
-            box = pygame.Rect(int(W * 0.05), int(H * 0.15), int(W * 0.38), int(H * 0.7))
+            box_w = int(W * 0.35)
+            box_h = int(H * 0.7)
+            box = pygame.Rect(cx - gap - box_w, (H - box_h) // 2, box_w, box_h)
             pygame.draw.rect(surf, GRAY, box)
-            draw_text(surf, "이미지 없음", self.fonts["menu"], GRAY_D, img_area_cx, img_area_cy)
+            draw_text(surf, "이미지 없음", self.fonts["menu"], GRAY_D, box.centerx, box.centery)
 
-        pygame.draw.line(surf, BLACK,
-            (int(W * 0.45), int(H * 0.1)),
-            (int(W * 0.45), int(H * 0.9)), 1)
+        # 텍스트 (구분선 오른쪽, 왼쪽 끝이 구분선에서 gap만큼)
+        desc = self.entry.get("description", [])
+        tx      = cx + gap
+        line_gap = int(H * 0.07)
+        total_h  = len(desc) * line_gap
+        ty       = H // 2 - total_h // 2
+        for line in desc:
+            draw_text_left(surf, line, self.fonts["hint_bold"], BLACK, tx, ty)
+            ty += line_gap
+
+        draw_text(surf, "Esc  돌아가기",
+                  self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.05))
+
+
+class GlossaryDetailScreen:
+    def __init__(self, screen, W, H, fonts, entry):
+        self.screen = screen
+        self.W, self.H = W, H
+        self.fonts  = fonts
+        self.entry  = entry
+        self.image  = None
+        self._load_image()
+
+    def _load_image(self):
+        path = self.entry.get("image", "")
+        if path and os.path.exists(path):
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                max_w = int(self.W * 0.3)
+                max_h = int(self.H * 0.35)
+                iw, ih = img.get_size()
+                scale = min(max_w / iw, max_h / ih)
+                self.image = pygame.transform.smoothscale(
+                    img, (int(iw * scale), int(ih * scale))
+                )
+            except Exception:
+                self.image = None
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                return "back"
+        return None
+
+    def update(self, dt): pass
+
+    def draw(self):
+        W, H = self.W, self.H
+        surf = self.screen
+        surf.fill(WHITE)
 
         desc = self.entry.get("description", [])
-        rx   = int(W * 0.5)
-        ry   = int(H * 0.25)
-        gap  = int(H * 0.07)
-        for i, line in enumerate(desc):
-            draw_text_left(surf, line, self.fonts["menu"], BLACK, rx, ry + i * gap)
+        name = desc[0] if desc else ""
+        lines = [l for l in desc[2:] if l != ""] if len(desc) > 2 else []
+
+        # 전체 블록 높이 계산
+        img_h    = self.image.get_height() + int(H * 0.04) if self.image else int(H * 0.04)
+        name_h   = int(H * 0.07)
+        desc_h   = len(lines) * int(H * 0.05)
+        total_h  = img_h + name_h + desc_h
+        cy       = H // 2 - total_h // 2
+
+        # 이미지
+        if self.image:
+            ir = self.image.get_rect(midtop=(W // 2, cy))
+            surf.blit(self.image, ir)
+            cy = ir.bottom + int(H * 0.04)
+        else:
+            cy += int(H * 0.04)
+
+        # 용어 이름
+        draw_text(surf, name, self.fonts["menu"], BLACK, W // 2, cy)
+        cy += name_h
+
+        # 설명
+        for line in lines:
+            draw_text(surf, line, self.fonts["hint_bold"], BLACK, W // 2, cy)
+            cy += int(H * 0.05)
 
         draw_text(surf, "Esc  돌아가기",
                   self.fonts["hint"], GRAY_D, W // 2, H - int(H * 0.05))
@@ -1646,6 +2072,7 @@ def main():
     battle_sc    = None
 
     comp_stack   = []
+    gloss_stack  = []
 
     def push_comp(screen_obj):
         comp_stack.append(screen_obj)
@@ -1656,6 +2083,16 @@ def main():
 
     def comp_top():
         return comp_stack[-1] if comp_stack else None
+
+    def push_gloss(screen_obj):
+        gloss_stack.append(screen_obj)
+
+    def pop_gloss():
+        if gloss_stack:
+            gloss_stack.pop()
+
+    def gloss_top():
+        return gloss_stack[-1] if gloss_stack else None
 
     while True:
         dt = clock.tick(FRAMERATES[settings["fps_index"]])
@@ -1699,6 +2136,35 @@ def main():
                             pass
                 continue
 
+            if current == "glossary" and gloss_stack:
+                top = gloss_top()
+                r   = top.handle_event(event)
+
+                if isinstance(top, GlossaryDetailScreen):
+                    if r == "back":
+                        pop_gloss()
+                        if not gloss_stack:
+                            current = "gallery"
+
+                elif isinstance(top, CompendiumMenuScreen):
+                    if r is None:
+                        pass
+                    elif r[0] == "back":
+                        pop_gloss()
+                        if not gloss_stack:
+                            current = "gallery"
+                    elif r[0] == "select":
+                        val  = r[1]
+                        name = top.items[top.selected][0]
+                        if isinstance(val, dict) and "image" in val:
+                            push_gloss(GlossaryDetailScreen(screen, W, H, fonts, val))
+                        elif isinstance(val, dict):
+                            items = [(k, v) for k, v in val.items()]
+                            push_gloss(CompendiumMenuScreen(screen, W, H, fonts, name, items))
+                        elif val is None:
+                            pass
+                continue
+
             if current == "title":
                 a = title.handle_event(event)
                 if a == "quit":
@@ -1715,7 +2181,7 @@ def main():
                     current = "placeholder"
                 elif a == "battle_test":
                     battle_sc = BattleScreen(screen, W, H, fonts,
-                                             enemies=["벨라", "벨라_일반", "벨라_일반", "벨라_일반", "벨라_일반"],
+                                             enemies=["벨라", "위장 슬라임", "포식 슬라임", "의태 슬라임", "벨라_일반"],
                                              allies=["주인공", "아우렐리우스", "금강"])
                     current = "battle"
 
@@ -1731,9 +2197,11 @@ def main():
                 r = gallery_sc.handle_event(event)
                 if r == "back":
                     current = "title"
-                elif r == "cutscene":
-                    placeholder = PlaceholderScreen(screen, W, H, fonts, "스토리 컷신")
-                    current = "placeholder"
+                elif r == "glossary":
+                    gloss_stack.clear()
+                    top_items = [(k, v) for k, v in GLOSSARY.items()]
+                    push_gloss(CompendiumMenuScreen(screen, W, H, fonts, "용어", top_items))
+                    current = "glossary"
                 elif r == "compendium":
                     comp_stack.clear()
                     top_items = [(k, v) for k, v in COMPENDIUM.items()]
@@ -1755,6 +2223,8 @@ def main():
         elif current == "gallery":      gallery_sc.update(dt)
         elif current == "compendium" and comp_stack:
                                         comp_top().update(dt)
+        elif current == "glossary" and gloss_stack:
+                                        gloss_top().update(dt)
         elif current == "battle":       battle_sc.update(dt)
         elif current == "placeholder":  placeholder.update(dt)
         if overlay == "quit":           quit_dlg.update(dt)
@@ -1764,6 +2234,8 @@ def main():
         elif current == "gallery":      gallery_sc.draw()
         elif current == "compendium" and comp_stack:
                                         comp_top().draw()
+        elif current == "glossary" and gloss_stack:
+                                        gloss_top().draw()
         elif current == "battle":       battle_sc.draw()
         elif current == "placeholder":  placeholder.draw()
         if overlay == "quit":           quit_dlg.draw()
