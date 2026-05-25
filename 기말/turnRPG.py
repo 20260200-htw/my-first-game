@@ -101,6 +101,8 @@ ENEMY_DEFS = {
         "sprite":        "assets/knight_leader.png",
         "sprite_scale":  0.5625,
         "click_w_ratio": 0.2,
+        "background":    "assets/knight_leader_grass.png",  # 배경 스프라이트
+        "bgm":           "assets/knight_leader_WWE.mp3",      # 배경음악
         "overview": [
             "벨라 트릭스",
             "",
@@ -110,8 +112,7 @@ ENEMY_DEFS = {
             "그렇다고 해서 당신을 죽이지 않는다는 보장은 없으니",
             "최선을 다해서 그녀의 의도에 맞춰주는 것을 권장합니다.",
             "",
-            "그녀와 싸우는 것은 이 세계에서 할 수 있는",
-            "가장 멍청한 짓 중 하나일 것입니다.",
+            "그녀와 싸운다는 것은 국가와 싸운다는 것과 같은 수준의 행위입니다.",
         ],
         "passives": [
             {
@@ -136,10 +137,24 @@ ENEMY_DEFS = {
                 ]
             },
             {
+                "name": "지옥불 결계",
+                "desc": [
+                    "매 턴이 시작될 때마다 보호막을 1000 만큼 얻습니다.",
+                    "적에게 피해를 받으면 즉시 파괴되며, 다음 턴이 되기 전까지 보호막을 얻지 않습니다.",
+                ]
+            },
+            {
                 "name": "집중",
                 "desc": [
-                    "자신이 사용하는 스킬의 최종 위력이 50 이상이 되었을 때마다",
+                    "자신이 사용하는 스킬의 최종 위력이 50 이상이라면",
                     "해당 턴에 사용하는 스킬의 최종 위력이 10 증가하고 피해량이 20% 증가합니다.",
+                ]
+            },
+            {
+                "name": "초재생",
+                "desc": [
+                    "매 턴이 시작될 때마다 자신의 전체 마력의 1%를 소모합니다.",
+                    "이때 소모한 마력*2 만큼 회복 효과를 적용하고 해당 턴 동안 모든 스킬의 최종 위력이 5 증가합니다.",
                 ]
             },
             {
@@ -155,10 +170,10 @@ ENEMY_DEFS = {
                 ]
             },
             {
-                "name": "지옥불 결계",
+                "name": "압도",
                 "desc": [
-                    "매 턴이 시작될 때마다 보호막을 1000 만큼 얻습니다.",
-                    "적에게 피해를 받으면 즉시 파괴되며, 다음 턴이 되기 전까지 보호막을 얻지 않습니다.",
+                    "자신이 사용하는 스킬의 최종 위력이 1000 이상이고, 대상의 레벨이 자신보다 낮다면",
+                    "해당 턴에 사용하는 스킬이 대상의 최대 체력의 100% 만큼 추가 고정 피해를 입힙니다.",
                 ]
             },
             {
@@ -226,7 +241,7 @@ ENEMY_DEFS = {
             },
             {
                 "name":   "당신들도 예외는 아닙니다",
-                "power":  130,
+                "power":  230,
                 "type":   "물리",
                 "target": "단일",
                 "hits":   1,
@@ -250,6 +265,18 @@ ENEMY_DEFS = {
                     "대상이 이 스킬로 피해를 받기 전 자신을 공격했다면 해당 스킬을 취소함",
                 ]
             },
+            {
+                "name":   "???",
+                "power":  1000,
+                "type":   "??",
+                "target": "??",
+                "hits":   1,
+                "tags":   [],
+                "sprite": "assets/KL_skills_10.png",
+                "desc": [
+                    "정보 확인 불가",
+                ]
+            },
         ],
     },
     "말단병사": {
@@ -261,8 +288,10 @@ ENEMY_DEFS = {
         "magic_level":   22,
         "hp_max":        1340,
         "sprite":        "assets/knight_maldan.png",
-        "sprite_scale":  0.5,
+        "sprite_scale":  0.3,
         "click_w_ratio": 0.2,
+        "background":    "assets/battle_bg_castle.png",  # 배경 스프라이트
+        "bgm":           "assets/battle_bgm_normal.mp3", # 배경음악
         "overview": [
             "왕국 기사단의 말단병사",
             "",
@@ -289,6 +318,7 @@ ENEMY_DEFS = {
         "sprite":        "assets/slime_eat1.png",
         "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
+        "background":    "assets/battle_bg_forest.png",  # 배경 스프라이트
     },
     "위장 슬라임": {
         "title":         "",
@@ -340,7 +370,7 @@ ALLY_DEFS = {
         "phys_level":    10,
         "magic_level":   10,
         "hp_max":        100,
-        "sprite":        "assets/main_character.png",
+        "sprite":        "assets/main_character_A.png", # A 남자, B 여자
         "sprite_scale":  0.7,
         "click_w_ratio": 0.2,
     },
@@ -1397,6 +1427,10 @@ class BattleScreen:
     ENEMY_SPACING = 0.13
     ALLY_SPACING  = 0.15
     UI_H_RATIO    = 0.3
+    
+    # 적 위치 설정 (화면 높이 비율)
+    BOSS_HEIGHT_RATIO   = 0.6  # 1번 적(보스) 높이 (0.0~1.0, 낮을수록 위쪽)
+    NORMAL_HEIGHT_RATIO = 0.45  # 나머지 적들 높이
 
     STATE_MENU   = "menu"
     STATE_TARGET = "target"
@@ -1415,6 +1449,36 @@ class BattleScreen:
 
         self.enemies = [Combatant(ENEMY_DEFS[k], W, H, enemy_max_w, enemy_max_h) for k in enemies]
         self.allies  = [Combatant(ALLY_DEFS[k],  W, H, ally_max_w,  ally_max_h)  for k in allies]
+
+        # ── 배경 로드 ─────────────────────────────────────────────
+        self.background = None
+        # 적 중에서 배경 정보가 있는 첫 번째 적의 배경 사용
+        for enemy_name in enemies:
+            bg_path = ENEMY_DEFS[enemy_name].get("background")
+            if bg_path and os.path.exists(bg_path):
+                try:
+                    bg_img = pygame.image.load(bg_path).convert()
+                    # 화면 크기에 맞게 스케일링
+                    self.background = pygame.transform.smoothscale(bg_img, (W, H))
+                    break
+                except Exception as e:
+                    print(f"배경 로드 실패: {bg_path} - {e}")
+        # ──────────────────────────────────────────────────────────
+        
+        # ── 배경음악 재생 ──────────────────────────────────────────
+        # 적 중에서 BGM 정보가 있는 첫 번째 적의 BGM 사용
+        for enemy_name in enemies:
+            bgm_path = ENEMY_DEFS[enemy_name].get("bgm")
+            if bgm_path and os.path.exists(bgm_path):
+                try:
+                    pygame.mixer.music.load(bgm_path)
+                    # BGM 볼륨 설정 (settings의 bgm_vol 사용)
+                    pygame.mixer.music.set_volume(settings["bgm_vol"] / 100.0)
+                    pygame.mixer.music.play(-1)  # -1 = 무한 반복
+                    break
+                except Exception as e:
+                    print(f"BGM 로드 실패: {bgm_path} - {e}")
+        # ──────────────────────────────────────────────────────────
 
         self.ui_y    = int(H * (1.0 - self.UI_H_RATIO))
 
@@ -1578,6 +1642,8 @@ class BattleScreen:
                 if self.state == self.STATE_TARGET:
                     self.state = self.STATE_MENU
                 else:
+                    # 전투 화면 종료 시 BGM 정지
+                    pygame.mixer.music.stop()
                     return "back"
             elif self.state == self.STATE_MENU:
                 if event.key in (pygame.K_UP, pygame.K_w):
@@ -1661,13 +1727,16 @@ class BattleScreen:
         positions = []
         for i, e in enumerate(self.enemies):
             if i == 0:
-                positions.append((int(W * 0.75), int(H * 0.55)))
+                # 1번 적(보스) 위치 - BOSS_HEIGHT_RATIO로 조정
+                boss_height = int(H * self.BOSS_HEIGHT_RATIO)
+                positions.append((int(W * 0.75), boss_height))
             else:
+                # 나머지 적들 위치 - NORMAL_HEIGHT_RATIO로 조정
                 count = len(self.enemies) - 1
                 spacing = int(W * 0.15)
                 start_x = int(W * 0.1)
                 reversed_i = count - (i - 1) - 1
-                positions.append((start_x + reversed_i * spacing, int(H * 0.42)))
+                positions.append((start_x + reversed_i * spacing, int(H * self.NORMAL_HEIGHT_RATIO)))
         return positions
 
     def _ally_positions(self):
@@ -1868,7 +1937,12 @@ class BattleScreen:
     def draw(self):
         W, H = self.W, self.H
         surf = self.screen
-        surf.fill(WHITE)
+        
+        # ── 배경 ──────────────────────────────────────────────────
+        if self.background:
+            surf.blit(self.background, (0, 0))
+        else:
+            surf.fill(WHITE)
 
         # ── 적 ────────────────────────────────────────────────────
         enemy_pos = self._enemy_positions()
@@ -1881,6 +1955,8 @@ class BattleScreen:
                     sw = int(e.sprite.get_width() * 0.5)
                     sh = int(e.sprite.get_height() * 0.5)
                     spr = pygame.transform.smoothscale(e.sprite, (sw, sh))
+                
+                # 스프라이트 그리기
                 spr_rect = spr.get_rect(midbottom=(ex, ey + int(H * 0.08)))
                 surf.blit(spr, spr_rect)
             else:
@@ -1912,6 +1988,8 @@ class BattleScreen:
         for a, (ax, ay) in zip(self.allies, ally_pos):
             if a.sprite:
                 flipped = pygame.transform.flip(a.sprite, True, False)
+                
+                # 스프라이트 그리기
                 r = flipped.get_rect(midbottom=(ax, ay))
                 surf.blit(flipped, r)
                 bar_top = r.top - int(H * 0.025)
