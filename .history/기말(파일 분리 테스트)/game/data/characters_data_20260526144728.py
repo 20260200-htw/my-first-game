@@ -244,26 +244,6 @@ ENEMY_DEFS = {
         "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
     },
-    "template": { #호출명
-        "title":         "", #이명, 보스 전용
-        "name":          "템플릿", #이름
-        "type":          "normal", #normal , boss
-        "level_min":     1, #레벨 차이가 있을 경우의 최소 레벨
-        "level_max":     100, #레벨 차이가 있을 경우의 최대 레벨
-        "hp_min":        10, #레벨별 체력 차이가 있을 경우의 최소치
-        "hp_max_range":  1000, #레벨별 체력 차이가 있을 경우의 최대치
-        "phys_min":      1, #레벨별 물리 레벨 차이가 있을 경우의 최소치
-        "phys_max":      100, #레벨별 물리 레벨 차이가 있을 경우의 최대치
-        "magic_min":     1, #레벨별 마법 레벨 차이가 있을 경우의 최소치
-        "magic_max":     100, #레벨별 마법 레벨 차이가 있을 경우의 최대치
-        "level":         1, #레벨 고정값, 아마 레벨 차이가 있을 경우 범위 내에서 랜덤 / 레벨 차이가 없을 때 이 값을 사용
-        "phys_level":    1, #레벨과 같음
-        "magic_level":   1, #레벨과 같음
-        "hp_max":        10, #레벨과 같음
-        "sprite":        "assets/파일이름.png", #사용하는 스프라이트의 경로
-        "sprite_scale":  0.5, #전투 화면에서 그려지는 스프라이트의 크기 배율
-        "click_w_ratio": 0.2, #정보 열람 범위, 스프라이트 기준 가로폭 배율
-    },
 }
 
 ALLY_DEFS = {

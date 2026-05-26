@@ -260,7 +260,7 @@ ENEMY_DEFS = {
         "phys_level":    1, #레벨과 같음
         "magic_level":   1, #레벨과 같음
         "hp_max":        10, #레벨과 같음
-        "sprite":        "assets/파일이름.png", #사용하는 스프라이트의 경로
+        "sprite":        "assets/slime_eat3.png", #사용하는 스프라이트의 경로
         "sprite_scale":  0.5, #전투 화면에서 그려지는 스프라이트의 크기 배율
         "click_w_ratio": 0.2, #정보 열람 범위, 스프라이트 기준 가로폭 배율
     },
