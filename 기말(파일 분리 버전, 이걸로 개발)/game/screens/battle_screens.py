@@ -15,8 +15,14 @@ class BattleScreen:
     UI_H_RATIO    = 0.3
     
     # 적 위치 설정 (화면 높이 비율)
-    BOSS_HEIGHT_RATIO   = 0.6  # 1번 적(보스) 높이 (0.0~1.0, 낮을수록 위쪽)
-    NORMAL_HEIGHT_RATIO = 0.45  # 나머지 적들 높이
+    BOSS_HEIGHT_RATIO   = 0.6
+    NORMAL_HEIGHT_RATIO = 0.45
+
+    # 카메라
+    CAM_MOVE_RATIO = 0.25  # 해상도의 25% 추가 이동 가능
+    ZOOM_MIN       = 0.75
+    ZOOM_MAX       = 1.25
+    ZOOM_STEP      = 0.1
 
     STATE_MENU   = "menu"
     STATE_TARGET = "target"
@@ -36,35 +42,52 @@ class BattleScreen:
         self.enemies = [Combatant(ENEMY_DEFS[k], W, H, enemy_max_w, enemy_max_h) for k in enemies]
         self.allies  = [Combatant(ALLY_DEFS[k],  W, H, ally_max_w,  ally_max_h)  for k in allies]
 
-        # ── 배경 로드 ─────────────────────────────────────────────
+        # ── 배경 로드 (줌 최소(0.75)에서도 화면을 꽉 채우도록) ──
+        # zoom_min=0.75일 때도 꽉 채우려면: BG * 0.75 >= W → BG >= W/0.75
+        # 카메라 이동 25% 여유까지 포함: BG >= W * (1/0.75 + 0.25) ≈ W * 1.58
+        # 여유있게 W * 1.7 사용
+        WLD_W = int(W * 2)
+        WLD_H = int(H * 1.25)
+
         self.background = None
-        # 적 중에서 배경 정보가 있는 첫 번째 적의 배경 사용
         for enemy_name in enemies:
             bg_path = ENEMY_DEFS[enemy_name].get("background")
             if bg_path and os.path.exists(bg_path):
                 try:
                     bg_img = pygame.image.load(bg_path).convert()
-                    # 화면 크기에 맞게 스케일링
-                    self.background = pygame.transform.smoothscale(bg_img, (W, H))
+                    orig_w, orig_h = bg_img.get_size()
+                    # 가로를 WLD_W에 맞추고 세로는 비율 유지
+                    scale = WLD_W / orig_w
+                    self.background = pygame.transform.smoothscale(bg_img, (WLD_W, int(orig_h * scale)))
                     break
                 except Exception as e:
                     print(f"배경 로드 실패: {bg_path} - {e}")
-        # ──────────────────────────────────────────────────────────
-        
+
+        # ── 바닥 로드 ──────────────────────────────────────────────
+        self.floor = None
+        for enemy_name in enemies:
+            floor_path = ENEMY_DEFS[enemy_name].get("floor")
+            if floor_path and os.path.exists(floor_path):
+                try:
+                    floor_img = pygame.image.load(floor_path).convert_alpha()
+                    orig_w, orig_h = floor_img.get_size()
+                    scale = WLD_W / orig_w
+                    self.floor = pygame.transform.smoothscale(floor_img, (WLD_W, int(orig_h * scale)))
+                    break
+                except Exception as e:
+                    print(f"바닥 로드 실패: {floor_path} - {e}")
+
         # ── 배경음악 재생 ──────────────────────────────────────────
-        # 적 중에서 BGM 정보가 있는 첫 번째 적의 BGM 사용
         for enemy_name in enemies:
             bgm_path = ENEMY_DEFS[enemy_name].get("bgm")
             if bgm_path and os.path.exists(bgm_path):
                 try:
                     pygame.mixer.music.load(bgm_path)
-                    # BGM 볼륨 설정 (settings의 bgm_vol 사용)
                     pygame.mixer.music.set_volume(settings["bgm_vol"] / 100.0)
-                    pygame.mixer.music.play(-1)  # -1 = 무한 반복
+                    pygame.mixer.music.play(-1)
                     break
                 except Exception as e:
                     print(f"BGM 로드 실패: {bgm_path} - {e}")
-        # ──────────────────────────────────────────────────────────
 
         self.ui_y    = int(H * (1.0 - self.UI_H_RATIO))
 
@@ -80,6 +103,37 @@ class BattleScreen:
         self.inspect_scroll  = 0
         self._underline_rects = []
 
+        # ── 카메라 ────────────────────────────────────────────────
+        self.cam_x    = 0.0
+        self.cam_y    = 0.0
+        self.zoom     = 1.0
+        self.dragging = False
+        self.drag_start_mouse = (0, 0)
+        self.drag_start_cam   = (0.0, 0.0)
+
+        # ── 스프라이트 캐시 ───────────────────────────────────────
+        self._cache_zoom = None
+        self._enemy_cache = []
+        self._ally_cache  = []
+
+        # ── 비네팅 캐시 (한 번만 생성) ───────────────────────────
+        vignette = pygame.Surface((W, H), pygame.SRCALPHA)
+        cx, cy = W // 2, H // 2
+        max_r = (cx ** 2 + cy ** 2) ** 0.5
+        for y in range(0, H, 2):
+            for x in range(0, W, 2):
+                dx, dy = x - cx, y - cy
+                dist = (dx ** 2 + dy ** 2) ** 0.5
+                ratio = dist / max_r
+                alpha = int(150 * ratio ** 2)
+                if alpha > 0:
+                    a = min(alpha, 200)
+                    vignette.set_at((x, y), (0, 0, 0, a))
+                    if x + 1 < W: vignette.set_at((x+1, y), (0, 0, 0, a))
+                    if y + 1 < H: vignette.set_at((x, y+1), (0, 0, 0, a))
+                    if x+1 < W and y+1 < H: vignette.set_at((x+1, y+1), (0, 0, 0, a))
+        self._vignette = vignette
+
     def _ui_rect(self):
         W, H = self.W, self.H
         ui_h = int(H * self.UI_H_RATIO) - int(H * 0.02)
@@ -91,19 +145,33 @@ class BattleScreen:
         ui = self._ui_rect()
         return pygame.Rect(ui.left - ui.width, ui.top, ui.width, ui.height)
 
+    def _world_to_screen(self, wx, wy):
+        W, H = self.W, self.H
+        sx = (wx - W / 2 - self.cam_x) * self.zoom + W / 2
+        sy = (wy - H / 2 - self.cam_y) * self.zoom + H / 2
+        return int(sx), int(sy)
+
     def _enemy_sprite_rect(self, i):
         positions = self._enemy_positions()
         if i >= len(positions):
             return None
         ex, ey = positions[i]
         e = self.enemies[i]
-        H = self.H
+        zoom = self.zoom
+        sx, sy = self._world_to_screen(ex, ey + int(self.H * 0.08))
         if e.sprite:
-            full = e.sprite.get_rect(midbottom=(ex, ey + int(H * 0.08)))
+            orig = e.sprite
+            if i != 0:
+                orig = pygame.transform.smoothscale(orig, (orig.get_width() // 2, orig.get_height() // 2))
+            sw = int(orig.get_width() * zoom)
+            sh = int(orig.get_height() * zoom)
+            full = pygame.Rect(0, 0, sw, sh)
+            full.midbottom = (sx, sy)
             ratio = e.defn.get("click_w_ratio", 1.0)
             new_w = int(full.width * ratio)
             return pygame.Rect(full.centerx - new_w // 2, full.top, new_w, full.height)
-        return pygame.Rect(ex - 40, ey - 80, 80, 80)
+        size = int(80 * zoom)
+        return pygame.Rect(sx - size // 2, sy - size, size, size)
 
     def _ally_sprite_rect(self, i):
         positions = self._ally_positions()
@@ -111,13 +179,18 @@ class BattleScreen:
             return None
         ax, ay = positions[i]
         a = self.allies[i]
+        zoom = self.zoom
+        sx, sy = self._world_to_screen(ax, ay)
         if a.sprite:
-            flipped = pygame.transform.flip(a.sprite, True, False)
-            full  = flipped.get_rect(midbottom=(ax, ay))
+            sw = int(a.sprite.get_width() * zoom)
+            sh = int(a.sprite.get_height() * zoom)
+            full = pygame.Rect(0, 0, sw, sh)
+            full.midbottom = (sx, sy)
             ratio = a.defn.get("click_w_ratio", 1.0)
             new_w = int(full.width * ratio)
             return pygame.Rect(full.centerx - new_w // 2, full.top, new_w, full.height)
-        return pygame.Rect(ax - 30, ay - 60, 60, 60)
+        size = int(60 * zoom)
+        return pygame.Rect(sx - size // 2, sy - size, size, size)
 
     def _open_inspect(self, combatant):
         self.inspect_enemy  = None
@@ -140,7 +213,6 @@ class BattleScreen:
             self.inspect_sprite = None
 
     def _inspect_target(self):
-        """현재 열람 중인 Combatant 반환"""
         return self.inspect_enemy or self.inspect_ally
 
     def _close_inspect(self):
@@ -168,7 +240,6 @@ class BattleScreen:
                 info_w      = W - pad * 2 - left_w
                 tab_total_w = info_w - pad * 2
                 tab_w       = tab_total_w // len(self.TAB_NAMES)
-                tabs_total_w = tab_w * len(self.TAB_NAMES)
                 bar_y       = pad + int(H * 0.22)
                 bar_h       = int(H * 0.03)
                 tab_y       = bar_y + bar_h + int(H * 0.03)
@@ -228,7 +299,6 @@ class BattleScreen:
                 if self.state == self.STATE_TARGET:
                     self.state = self.STATE_MENU
                 else:
-                    # 전투 화면 종료 시 BGM 정지
                     pygame.mixer.music.stop()
                     return "back"
             elif self.state == self.STATE_MENU:
@@ -251,6 +321,14 @@ class BattleScreen:
 
         elif event.type == pygame.MOUSEMOTION:
             mx, my = event.pos
+            # 카메라 드래그
+            if self.dragging:
+                dx = (mx - self.drag_start_mouse[0]) / self.zoom
+                dy = (my - self.drag_start_mouse[1]) / self.zoom
+                max_x = self.W * self.CAM_MOVE_RATIO
+                self.cam_x = max(-max_x, min(max_x, self.drag_start_cam[0] - dx))
+                self.cam_y = 0.0
+            # UI 호버
             if self.state == self.STATE_MENU:
                 ui     = self._ui_rect()
                 item_h = ui.height // (len(self.UI_ITEMS) + 1)
@@ -268,6 +346,9 @@ class BattleScreen:
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
+            ui = self._ui_rect()
+            tr = self._target_rect()
+            on_ui = ui.collidepoint(mx, my) or (self.state == self.STATE_TARGET and tr.collidepoint(mx, my))
             # 적 스프라이트 클릭
             for i in range(len(self.enemies)):
                 r = self._enemy_sprite_rect(i)
@@ -280,9 +361,7 @@ class BattleScreen:
                 if r and r.collidepoint(mx, my):
                     self._open_inspect(self.allies[i])
                     return None
-
             if self.state == self.STATE_MENU:
-                ui     = self._ui_rect()
                 item_h = ui.height // (len(self.UI_ITEMS) + 1)
                 for i in range(len(self.UI_ITEMS)):
                     cy = ui.top + item_h * (i + 1)
@@ -292,13 +371,29 @@ class BattleScreen:
                             self.state = self.STATE_TARGET
                             self.target_selected = 0
             elif self.state == self.STATE_TARGET:
-                tr     = self._target_rect()
                 slot_h = tr.height // 5
                 for i in range(len(self.enemies)):
                     slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
                     if slot_rect.collidepoint(mx, my):
                         self._do_attack(i)
                         self.state = self.STATE_MENU
+            # UI 아닌 곳 클릭 → 카메라 드래그 시작
+            if not on_ui:
+                self.dragging = True
+                self.drag_start_mouse = (mx, my)
+                self.drag_start_cam   = (self.cam_x, self.cam_y)
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.dragging = False
+
+        elif event.type == pygame.MOUSEWHEEL:
+            self.zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self.zoom + self.ZOOM_STEP * event.y))
+
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 4:
+            self.zoom = min(self.ZOOM_MAX, self.zoom + self.ZOOM_STEP)
+
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 5:
+            self.zoom = max(self.ZOOM_MIN, self.zoom - self.ZOOM_STEP)
 
         return None
 
@@ -312,26 +407,229 @@ class BattleScreen:
     def _enemy_positions(self):
         W, H = self.W, self.H
         positions = []
-        for i, e in enumerate(self.enemies):
-            if i == 0:
-                # 1번 적(보스) 위치 - BOSS_HEIGHT_RATIO로 조정
-                boss_height = int(H * self.BOSS_HEIGHT_RATIO)
-                positions.append((int(W * 0.75), boss_height))
-            else:
-                # 나머지 적들 위치 - NORMAL_HEIGHT_RATIO로 조정
-                count = len(self.enemies) - 1
-                spacing = int(W * 0.15)
-                start_x = int(W * 0.1)
-                reversed_i = count - (i - 1) - 1
-                positions.append((start_x + reversed_i * spacing, int(H * self.NORMAL_HEIGHT_RATIO)))
+        has_boss = any(e.ctype == "boss" for e in self.enemies)
+        boss_idx = next((i for i, e in enumerate(self.enemies) if e.ctype == "boss"), None)
+
+        if not has_boss:
+            right_x  = int(W * 0.72)
+            center_y = int(H * 0.55)
+            step_y   = int(H * 0.18)
+            count    = len(self.enemies)
+            for i in range(count):
+                offset = i - count // 2
+                positions.append((right_x, center_y + offset * step_y))
+
+        elif boss_idx == 0:
+            boss_x = int(W * 0.50)
+            boss_y = int(H * 0.60)
+            positions_dict = {0: (boss_x, boss_y)}
+            right_x  = int(W * 0.78)
+            center_y = int(H * 0.55)
+            step_y   = int(H * 0.18)
+            normals  = [i for i in range(len(self.enemies)) if i != 0]
+            for slot, idx in enumerate(normals):
+                offset = slot - len(normals) // 2
+                positions_dict[idx] = (right_x, center_y + offset * step_y)
+            for i in range(len(self.enemies)):
+                positions.append(positions_dict.get(i, (int(W * 0.72), int(H * 0.55))))
+
+        else:
+            boss_x = int(W * 0.78)
+            boss_y = int(H * 0.60)
+            positions_dict = {boss_idx: (boss_x, boss_y)}
+            left_x   = int(W * 0.55)
+            center_y = int(H * 0.55)
+            step_y   = int(H * 0.18)
+            normals  = [i for i in range(len(self.enemies)) if i != boss_idx]
+            reorder  = [2, 0, 1, 3]
+            ordered  = [normals[r] for r in reorder if r < len(normals)]
+            for slot, idx in enumerate(ordered):
+                offset = slot - len(ordered) // 2
+                positions_dict[idx] = (left_x, center_y + offset * step_y)
+            for i in range(len(self.enemies)):
+                positions.append(positions_dict.get(i, (int(W * 0.72), int(H * 0.55))))
+
         return positions
 
     def _ally_positions(self):
-        W, H    = self.W, self.H
-        foot_y  = int(H * 1.4)
-        spacing = int(W * self.ALLY_SPACING)
-        start_x = int(W * 0.1)
-        return [(start_x + i * spacing, foot_y) for i in range(len(self.allies))]
+        W, H = self.W, self.H
+        center_x = int(W * 0.25)
+        center_y = int(H * 0.65)
+        step_x   = int(W * 0.04)
+        step_y   = int(H * 0.12)
+        offsets = [
+            (0,            0),
+            (-step_x,     -step_y),
+            ( step_x,      step_y),
+            (-step_x * 2, -step_y * 2),
+            ( step_x * 2,  step_y * 2),
+        ]
+        positions = []
+        for i in range(len(self.allies)):
+            ox, oy = offsets[i] if i < len(offsets) else (0, 0)
+            positions.append((center_x + ox, center_y + oy))
+        return positions
+
+    def draw(self):
+        W, H = self.W, self.H
+        surf = self.screen
+        zoom = self.zoom
+
+        # 스프라이트 캐시 갱신 (줌 변경 시에만)
+        if self._cache_zoom != zoom:
+            self._enemy_cache = []
+            for i, e in enumerate(self.enemies):
+                if e.sprite_orig and e.sprite:
+                    target_w = int(e.sprite.get_width() * zoom)
+                    target_h = int(e.sprite.get_height() * zoom)
+                    if i != 0:
+                        target_w = target_w // 2
+                        target_h = target_h // 2
+                    self._enemy_cache.append(
+                        pygame.transform.smoothscale(e.sprite_orig, (target_w, target_h))
+                    )
+                else:
+                    self._enemy_cache.append(None)
+            self._ally_cache = []
+            for a in self.allies:
+                if a.sprite_orig and a.sprite:
+                    target_w = int(a.sprite.get_width() * zoom)
+                    target_h = int(a.sprite.get_height() * zoom)
+                    orig_flip = pygame.transform.flip(a.sprite_orig, True, False)
+                    self._ally_cache.append(
+                        pygame.transform.smoothscale(orig_flip, (target_w, target_h))
+                    )
+                else:
+                    self._ally_cache.append(None)
+            self._cache_zoom = zoom
+
+        # 화면 → 줌/카메라 적용 좌표 변환
+        def to_sx(wx): return int((wx - W / 2 - self.cam_x) * zoom + W / 2)
+        def to_sy(wy): return int((wy - H / 2 - self.cam_y) * zoom + H / 2)
+
+        # ── 배경 (125% 크기로 로드됨, 줌 1.0 = 화면 꽉 채움) ───
+        surf.fill((0, 0, 0))
+        if self.background:
+            bw, bh = self.background.get_size()
+            draw_w = int(bw * zoom)
+            draw_h = int(bh * zoom)
+            scaled_bg = pygame.transform.smoothscale(self.background, (draw_w, draw_h))
+            bx = int(W / 2 - draw_w / 2 - self.cam_x * zoom)
+            by = int(H / 2 - draw_h / 2)
+            surf.blit(scaled_bg, (bx, by))
+        else:
+            surf.fill(WHITE)
+
+        # ── 바닥 ──────────────────────────────────────────────────
+        if self.floor:
+            fw, fh = self.floor.get_size()
+            draw_w = int(fw * zoom)
+            draw_h = int(fh * zoom)
+            scaled_floor = pygame.transform.smoothscale(self.floor, (draw_w, draw_h))
+            fx = int(W / 2 - draw_w / 2 - self.cam_x * zoom)
+            fy = int(H / 2 - draw_h / 2)
+            surf.blit(scaled_floor, (fx, fy))
+
+        # ── 적 ────────────────────────────────────────────────────
+        enemy_pos = self._enemy_positions()
+        for i, (e, (ex, ey)) in enumerate(zip(self.enemies, enemy_pos)):
+            sx = to_sx(ex)
+            sy = to_sy(ey + int(H * 0.08))
+            spr = self._enemy_cache[i] if i < len(self._enemy_cache) else None
+            spr_rect = None
+            if spr:
+                spr_rect = spr.get_rect(midbottom=(sx, sy))
+                surf.blit(spr, spr_rect)
+            else:
+                size = int(80 * zoom)
+                pygame.draw.rect(surf, GRAY, pygame.Rect(sx - size // 2, sy - size, size, size))
+
+            if e.ctype == "boss":
+                bw = int(W * 0.55)
+                bh = int(H * 0.035)
+                bx = (W - bw) // 2
+                by = int(H * 0.03)
+                pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+                fill = int(bw * e.hp / e.hp_max)
+                pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
+                pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 2)
+                draw_text(surf, e.title, self.fonts["hint"], BLACK, W // 2, by + bh + int(H * 0.025))
+                draw_text(surf, e.name,  self.fonts["menu"], BLACK, W // 2, by + bh + int(H * 0.065))
+            else:
+                bw = int(W * 0.07 * zoom)
+                bh = max(4, int(H * 0.018 * zoom))
+                bx = sx - bw // 2
+                by = spr_rect.top - int(H * 0.01 * zoom) if spr_rect else sy - int(H * 0.22 * zoom)
+                pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+                fill = int(bw * e.hp / e.hp_max)
+                pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
+                pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
+
+        # ── 아군 ──────────────────────────────────────────────────
+        ally_pos = self._ally_positions()
+        for j, (a, (ax, ay)) in enumerate(zip(self.allies, ally_pos)):
+            sx = to_sx(ax)
+            sy = to_sy(ay)
+            spr = self._ally_cache[j] if j < len(self._ally_cache) else None
+            if spr:
+                r = spr.get_rect(midbottom=(sx, sy))
+                surf.blit(spr, r)
+                bar_top = r.top - int(H * 0.01 * zoom)
+            else:
+                size = int(60 * zoom)
+                pygame.draw.rect(surf, GRAY, pygame.Rect(sx - size // 2, sy - size, size, size))
+                bar_top = sy - int(size + H * 0.01 * zoom)
+
+            bw = int(W * 0.09 * zoom)
+            bh = max(4, int(H * 0.018 * zoom))
+            bx = sx - bw // 2
+            by = bar_top
+            pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+            fill = int(bw * a.hp / a.hp_max)
+            pygame.draw.rect(surf, GREEN, (bx, by, fill, bh))
+            pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
+
+        # ── 행동 메뉴 UI ──────────────────────────────────────────
+        ui     = self._ui_rect()
+        item_h = ui.height // (len(self.UI_ITEMS) + 1)
+        pygame.draw.rect(surf, WHITE, ui)
+        pygame.draw.rect(surf, BLACK, ui, 2)
+        for i, item in enumerate(self.UI_ITEMS):
+            cy  = ui.top + item_h * (i + 1)
+            sel = (i == self.menu_selected)
+            r   = pygame.Rect(ui.left + 4, cy - item_h // 2 + 2, ui.width - 8, item_h - 4)
+            if sel and self.state == self.STATE_MENU:
+                pygame.draw.rect(surf, BLACK, r)
+                draw_text(surf, item, self.fonts["menu"], WHITE, ui.centerx, cy)
+            else:
+                draw_text(surf, item, self.fonts["menu"], BLACK, ui.centerx, cy)
+
+        # ── 대상 선택 창 ──────────────────────────────────────────
+        if self.state == self.STATE_TARGET:
+            tr     = self._target_rect()
+            slot_h = tr.height // 5
+            pygame.draw.rect(surf, WHITE, tr)
+            pygame.draw.rect(surf, BLACK, tr, 2)
+            for i in range(5):
+                slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                pygame.draw.line(surf, GRAY, (tr.left, tr.top + i * slot_h), (tr.right, tr.top + i * slot_h), 1)
+                if i < len(self.enemies):
+                    e   = self.enemies[i]
+                    sel = (i == self.target_selected)
+                    cy  = slot_rect.centery
+                    if sel:
+                        pygame.draw.rect(surf, BLACK, slot_rect)
+                        draw_text(surf, e.name, self.fonts["menu"], WHITE, tr.centerx, cy)
+                    else:
+                        draw_text(surf, e.name, self.fonts["menu"], BLACK, tr.centerx, cy)
+
+        # ── 비네팅 ───────────────────────────────────────────────
+        surf.blit(self._vignette, (0, 0))
+
+        # ── 열람 오버레이 ─────────────────────────────────────────
+        c = self._inspect_target()
+        if c is not None:
+            self._draw_inspect_overlay(c)
 
     def _draw_inspect_overlay(self, c):
         """적/아군 공통 열람 오버레이"""
@@ -519,118 +817,6 @@ class BattleScreen:
             else:
                 draw_text(surf, "준비 중입니다.", self.fonts["menu"], GRAY_D,
                           content_rect.centerx, content_rect.centery)
-
-
-    def draw(self):
-        W, H = self.W, self.H
-        surf = self.screen
-        
-        # ── 배경 ──────────────────────────────────────────────────
-        if self.background:
-            surf.blit(self.background, (0, 0))
-        else:
-            surf.fill(WHITE)
-
-        # ── 적 ────────────────────────────────────────────────────
-        enemy_pos = self._enemy_positions()
-        for i, (e, (ex, ey)) in enumerate(zip(self.enemies, enemy_pos)):
-            spr_rect = None
-            if e.sprite:
-                if i == 0:
-                    spr = e.sprite
-                else:
-                    sw = int(e.sprite.get_width() * 0.5)
-                    sh = int(e.sprite.get_height() * 0.5)
-                    spr = pygame.transform.smoothscale(e.sprite, (sw, sh))
-                
-                # 스프라이트 그리기
-                spr_rect = spr.get_rect(midbottom=(ex, ey + int(H * 0.08)))
-                surf.blit(spr, spr_rect)
-            else:
-                pygame.draw.rect(surf, GRAY, pygame.Rect(ex - 40, ey - 80, 80, 80))
-
-            if e.ctype == "boss":
-                bw = int(W * 0.55)
-                bh = int(H * 0.035)
-                bx = (W - bw) // 2
-                by = int(H * 0.03)
-                pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
-                fill = int(bw * e.hp / e.hp_max)
-                pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
-                pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 2)
-                draw_text(surf, e.title, self.fonts["hint"], BLACK, W // 2, by + bh + int(H * 0.025))
-                draw_text(surf, e.name,  self.fonts["menu"], BLACK, W // 2, by + bh + int(H * 0.065))
-            else:
-                bw = int(W * 0.07)
-                bh = int(H * 0.018)
-                bx = ex - bw // 2
-                by = spr_rect.top - int(H * 0.025) if spr_rect else ey - int(H * 0.22)
-                pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
-                fill = int(bw * e.hp / e.hp_max)
-                pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
-                pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
-
-        # ── 아군 ──────────────────────────────────────────────────
-        ally_pos = self._ally_positions()
-        for a, (ax, ay) in zip(self.allies, ally_pos):
-            if a.sprite:
-                flipped = pygame.transform.flip(a.sprite, True, False)
-                
-                # 스프라이트 그리기
-                r = flipped.get_rect(midbottom=(ax, ay))
-                surf.blit(flipped, r)
-                bar_top = r.top - int(H * 0.025)
-            else:
-                pygame.draw.rect(surf, GRAY, pygame.Rect(ax - 30, ay - 60, 60, 60))
-                bar_top = ay - 70
-
-            bw = int(W * 0.09)
-            bh = int(H * 0.018)
-            bx = ax - bw // 2
-            by = bar_top
-            pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
-            fill = int(bw * a.hp / a.hp_max)
-            pygame.draw.rect(surf, GREEN, (bx, by, fill, bh))
-            pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
-
-        # ── 행동 메뉴 UI ──────────────────────────────────────────
-        ui     = self._ui_rect()
-        item_h = ui.height // (len(self.UI_ITEMS) + 1)
-        pygame.draw.rect(surf, WHITE, ui)
-        pygame.draw.rect(surf, BLACK, ui, 2)
-        for i, item in enumerate(self.UI_ITEMS):
-            cy  = ui.top + item_h * (i + 1)
-            sel = (i == self.menu_selected)
-            r   = pygame.Rect(ui.left + 4, cy - item_h // 2 + 2, ui.width - 8, item_h - 4)
-            if sel and self.state == self.STATE_MENU:
-                pygame.draw.rect(surf, BLACK, r)
-                draw_text(surf, item, self.fonts["menu"], WHITE, ui.centerx, cy)
-            else:
-                draw_text(surf, item, self.fonts["menu"], BLACK, ui.centerx, cy)
-
-        # ── 대상 선택 창 ──────────────────────────────────────────
-        if self.state == self.STATE_TARGET:
-            tr     = self._target_rect()
-            slot_h = tr.height // 5
-            pygame.draw.rect(surf, WHITE, tr)
-            pygame.draw.rect(surf, BLACK, tr, 2)
-            for i in range(5):
-                slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
-                pygame.draw.line(surf, GRAY, (tr.left, tr.top + i * slot_h), (tr.right, tr.top + i * slot_h), 1)
-                if i < len(self.enemies):
-                    e   = self.enemies[i]
-                    sel = (i == self.target_selected)
-                    cy  = slot_rect.centery
-                    if sel:
-                        pygame.draw.rect(surf, BLACK, slot_rect)
-                        draw_text(surf, e.name, self.fonts["menu"], WHITE, tr.centerx, cy)
-                    else:
-                        draw_text(surf, e.name, self.fonts["menu"], BLACK, tr.centerx, cy)
-
-        # ── 열람 오버레이 ─────────────────────────────────────────
-        c = self._inspect_target()
-        if c is not None:
-            self._draw_inspect_overlay(c)
 
 
 

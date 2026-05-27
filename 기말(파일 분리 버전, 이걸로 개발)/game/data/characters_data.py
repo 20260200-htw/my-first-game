@@ -7,10 +7,11 @@ ENEMY_DEFS = {
         "phys_level":    100,
         "magic_level":   100,
         "hp_max":        10000,
-        "sprite":        "assets/knight_leader.png",
-        "sprite_scale":  0.5625,
+        "sprite":        "assets/KL_battle.png",
+        "sprite_scale":  0.3,
         "click_w_ratio": 0.2,
         "background":    "assets/knight_leader_grass.png",  # 배경 스프라이트
+        "floor":    "assets/knight_leader_grass_floor.png",  # 바닥 스프라이트
         "bgm":           "assets/knight_leader_WWE.mp3",      # 배경음악
         "overview": [
             "벨라 트릭스",
@@ -274,8 +275,8 @@ ALLY_DEFS = {
         "phys_level":    10,
         "magic_level":   10,
         "hp_max":        100,
-        "sprite":        "assets/main_character.png",
-        "sprite_scale":  0.7,
+        "sprite":        "assets/main_character_B.png",
+        "sprite_scale":  0.25,
         "click_w_ratio": 0.2,
     },
     "아우렐리우스": {
@@ -285,8 +286,8 @@ ALLY_DEFS = {
         "phys_level":    84,
         "magic_level":   83,
         "hp_max":        6570,
-        "sprite":        "assets/super_healer_man.png",
-        "sprite_scale":  0.8,
+        "sprite":        "assets/SHM_battle.png",
+        "sprite_scale":  0.3,
         "click_w_ratio": 0.2,
         "overview": [
             "플라비우스 아우렐리우스",
@@ -345,8 +346,8 @@ ALLY_DEFS = {
         "phys_level":    86,
         "magic_level":   72,
         "hp_max":        5560,
-        "sprite":        "assets/super_fight_girl.png",
-        "sprite_scale":  0.75,
+        "sprite":        "assets/SFG_battle.png",
+        "sprite_scale":  0.275,
         "click_w_ratio": 0.2,
         "overview": [
             "금강",
