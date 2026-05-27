@@ -11,6 +11,7 @@ from screens.menu_screens import (
     PlaceholderScreen, QuitDialog, GameStartScreen
 )
 from screens.battle_screens import BattleScreen
+from screens.menu_screens import BattleSelectScreen
 
 
 def load_fonts(H):
@@ -43,8 +44,9 @@ def main():
     placeholder  = None
     settings_sc  = None
     gallery_sc   = None
-    battle_sc    = None
-    gamestart_sc = None
+    battle_sc        = None
+    gamestart_sc     = None
+    battle_select_sc = None
 
     comp_stack   = []
     gloss_stack  = []
@@ -155,9 +157,21 @@ def main():
                     gamestart_sc = GameStartScreen(screen, W, H, fonts)
                     current = "gamestart"
                 elif a == "battle_test":
+                    battle_select_sc = BattleSelectScreen(screen, W, H, fonts)
+                    current = "battle_select"
+
+            elif current == "battle_select":
+                r = battle_select_sc.handle_event(event)
+                if r == "back":
+                    current = "title"
+                elif isinstance(r, tuple) and r[0] == "start":
+                    preset = r[1]
                     battle_sc = BattleScreen(screen, W, H, fonts,
-                                             enemies=["벨라", "말단병사", "말단병사", "말단병사", "말단병사"],
-                                             allies=["주인공", "아우렐리우스", "금강"])
+                                             enemies=preset["enemies"],
+                                             allies=preset["allies"],
+                                             enemy_formation=preset["enemy_formation"],
+                                             ally_formation=preset["ally_formation"],
+                                             gap=preset.get("gap", 0.12))
                     current = "battle"
 
             elif current == "gamestart":
@@ -205,6 +219,7 @@ def main():
                     current = "title"
 
         if current == "title":          title.update(dt)
+        elif current == "battle_select": battle_select_sc.update(dt)
         elif current == "gamestart":    gamestart_sc.update(dt)
         elif current == "settings":     settings_sc.update(dt)
         elif current == "gallery":      gallery_sc.update(dt)
@@ -217,6 +232,7 @@ def main():
         if overlay == "quit":           quit_dlg.update(dt)
 
         if current == "title":          title.draw()
+        elif current == "battle_select": battle_select_sc.draw()
         elif current == "gamestart":    gamestart_sc.draw()
         elif current == "settings":     settings_sc.draw()
         elif current == "gallery":      gallery_sc.draw()

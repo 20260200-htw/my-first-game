@@ -20,8 +20,8 @@ class BattleScreen:
 
     # 카메라
     CAM_MOVE_RATIO = 0.25  # 해상도의 25% 추가 이동 가능
-    ZOOM_MIN       = 0.75
-    ZOOM_MAX       = 1.25
+    ZOOM_MIN       = 0.5
+    ZOOM_MAX       = 1
     ZOOM_STEP      = 0.1
 
     STATE_MENU   = "menu"
@@ -29,7 +29,7 @@ class BattleScreen:
 
     TAB_NAMES = ["개요", "스킬", "패시브"]
 
-    def __init__(self, screen, W, H, fonts, enemies, allies):
+    def __init__(self, screen, W, H, fonts, enemies, allies, enemy_formation="솔캐리_전방", ally_formation="트리오", gap=0.12):
         self.screen  = screen
         self.W, self.H = W, H
         self.fonts   = fonts
@@ -41,13 +41,16 @@ class BattleScreen:
 
         self.enemies = [Combatant(ENEMY_DEFS[k], W, H, enemy_max_w, enemy_max_h) for k in enemies]
         self.allies  = [Combatant(ALLY_DEFS[k],  W, H, ally_max_w,  ally_max_h)  for k in allies]
+        self.enemy_formation = enemy_formation
+        self.ally_formation  = ally_formation
+        self.gap             = gap  # 양 진영 앞 캐릭터 사이 거리 (화면 비율)
 
         # ── 배경 로드 (줌 최소(0.75)에서도 화면을 꽉 채우도록) ──
         # zoom_min=0.75일 때도 꽉 채우려면: BG * 0.75 >= W → BG >= W/0.75
         # 카메라 이동 25% 여유까지 포함: BG >= W * (1/0.75 + 0.25) ≈ W * 1.58
         # 여유있게 W * 1.7 사용
-        WLD_W = int(W * 2)
-        WLD_H = int(H * 1.25)
+        WLD_W = int(W * 2.5)
+        WLD_H = int(H * 1)
 
         self.background = None
         for enemy_name in enemies:
@@ -125,7 +128,7 @@ class BattleScreen:
                 dx, dy = x - cx, y - cy
                 dist = (dx ** 2 + dy ** 2) ** 0.5
                 ratio = dist / max_r
-                alpha = int(150 * ratio ** 2)
+                alpha = int(100 * ratio ** 2)
                 if alpha > 0:
                     a = min(alpha, 200)
                     vignette.set_at((x, y), (0, 0, 0, a))
@@ -158,7 +161,7 @@ class BattleScreen:
         ex, ey = positions[i]
         e = self.enemies[i]
         zoom = self.zoom
-        sx, sy = self._world_to_screen(ex, ey + int(self.H * 0.08))
+        sx, sy = self._world_to_screen(ex, ey)
         if e.sprite:
             orig = e.sprite
             if i != 0:
@@ -326,8 +329,10 @@ class BattleScreen:
                 dx = (mx - self.drag_start_mouse[0]) / self.zoom
                 dy = (my - self.drag_start_mouse[1]) / self.zoom
                 max_x = self.W * self.CAM_MOVE_RATIO
+                max_y_up   = self.H * 0.25
+                max_y_down = self.H * 0.05
                 self.cam_x = max(-max_x, min(max_x, self.drag_start_cam[0] - dx))
-                self.cam_y = 0.0
+                self.cam_y = max(-max_y_up, min(max_y_down, self.drag_start_cam[1] - dy))
             # UI 호버
             if self.state == self.STATE_MENU:
                 ui     = self._ui_rect()
@@ -405,69 +410,42 @@ class BattleScreen:
         pass
 
     def _enemy_positions(self):
+        from data.battle_presets import ENEMY_FORMATIONS
         W, H = self.W, self.H
+        # 중앙 기준점
+        center_x = int(W * 0.5 + W * self.gap)  # 적 진영 앞 기준 x
+        center_y = int(H * 0.60)
+        step_x   = int(W * 0.10)
+        step_y   = int(H * 0.15)
+
+        formation = ENEMY_FORMATIONS.get(self.enemy_formation, ENEMY_FORMATIONS["솔캐리_전방"])
         positions = []
-        has_boss = any(e.ctype == "boss" for e in self.enemies)
-        boss_idx = next((i for i, e in enumerate(self.enemies) if e.ctype == "boss"), None)
-
-        if not has_boss:
-            right_x  = int(W * 0.72)
-            center_y = int(H * 0.55)
-            step_y   = int(H * 0.18)
-            count    = len(self.enemies)
-            for i in range(count):
-                offset = i - count // 2
-                positions.append((right_x, center_y + offset * step_y))
-
-        elif boss_idx == 0:
-            boss_x = int(W * 0.50)
-            boss_y = int(H * 0.60)
-            positions_dict = {0: (boss_x, boss_y)}
-            right_x  = int(W * 0.78)
-            center_y = int(H * 0.55)
-            step_y   = int(H * 0.18)
-            normals  = [i for i in range(len(self.enemies)) if i != 0]
-            for slot, idx in enumerate(normals):
-                offset = slot - len(normals) // 2
-                positions_dict[idx] = (right_x, center_y + offset * step_y)
-            for i in range(len(self.enemies)):
-                positions.append(positions_dict.get(i, (int(W * 0.72), int(H * 0.55))))
-
-        else:
-            boss_x = int(W * 0.78)
-            boss_y = int(H * 0.60)
-            positions_dict = {boss_idx: (boss_x, boss_y)}
-            left_x   = int(W * 0.55)
-            center_y = int(H * 0.55)
-            step_y   = int(H * 0.18)
-            normals  = [i for i in range(len(self.enemies)) if i != boss_idx]
-            reorder  = [2, 0, 1, 3]
-            ordered  = [normals[r] for r in reorder if r < len(normals)]
-            for slot, idx in enumerate(ordered):
-                offset = slot - len(ordered) // 2
-                positions_dict[idx] = (left_x, center_y + offset * step_y)
-            for i in range(len(self.enemies)):
-                positions.append(positions_dict.get(i, (int(W * 0.72), int(H * 0.55))))
-
+        for i in range(len(self.enemies)):
+            if i < len(formation):
+                dx, dy = formation[i]
+                positions.append((center_x + dx * step_x, center_y + dy * step_y))
+            else:
+                positions.append((center_x, center_y))
         return positions
 
     def _ally_positions(self):
+        from data.battle_presets import ALLY_FORMATIONS
         W, H = self.W, self.H
-        center_x = int(W * 0.25)
-        center_y = int(H * 0.65)
-        step_x   = int(W * 0.04)
-        step_y   = int(H * 0.12)
-        offsets = [
-            (0,            0),
-            (-step_x,     -step_y),
-            ( step_x,      step_y),
-            (-step_x * 2, -step_y * 2),
-            ( step_x * 2,  step_y * 2),
-        ]
+        # 중앙 기준점 (적 진영과 대칭)
+        center_x = int(W * 0.5 - W * self.gap)  # 아군 진영 앞 기준 x
+        center_y = int(H * 0.60)
+        step_x   = int(W * 0.10)
+        step_y   = int(H * 0.15)
+
+        formation = ALLY_FORMATIONS.get(self.ally_formation, ALLY_FORMATIONS["트리오"])
         positions = []
         for i in range(len(self.allies)):
-            ox, oy = offsets[i] if i < len(offsets) else (0, 0)
-            positions.append((center_x + ox, center_y + oy))
+            if i < len(formation):
+                dx, dy = formation[i]
+                # 아군은 x축 반전 (왼쪽 방향)
+                positions.append((center_x - dx * step_x, center_y + dy * step_y))
+            else:
+                positions.append((center_x, center_y))
         return positions
 
     def draw(self):
@@ -515,7 +493,7 @@ class BattleScreen:
             draw_h = int(bh * zoom)
             scaled_bg = pygame.transform.smoothscale(self.background, (draw_w, draw_h))
             bx = int(W / 2 - draw_w / 2 - self.cam_x * zoom)
-            by = int(H / 2 - draw_h / 2)
+            by = int(H / 2 - draw_h / 2 - self.cam_y * zoom)
             surf.blit(scaled_bg, (bx, by))
         else:
             surf.fill(WHITE)
@@ -527,14 +505,14 @@ class BattleScreen:
             draw_h = int(fh * zoom)
             scaled_floor = pygame.transform.smoothscale(self.floor, (draw_w, draw_h))
             fx = int(W / 2 - draw_w / 2 - self.cam_x * zoom)
-            fy = int(H / 2 - draw_h / 2)
+            fy = int(H / 2 - draw_h / 2 - self.cam_y * zoom)
             surf.blit(scaled_floor, (fx, fy))
 
         # ── 적 ────────────────────────────────────────────────────
         enemy_pos = self._enemy_positions()
-        for i, (e, (ex, ey)) in enumerate(zip(self.enemies, enemy_pos)):
+        for i, (e, (ex, ey)) in reversed(list(enumerate(zip(self.enemies, enemy_pos)))):
             sx = to_sx(ex)
-            sy = to_sy(ey + int(H * 0.08))
+            sy = to_sy(ey)
             spr = self._enemy_cache[i] if i < len(self._enemy_cache) else None
             spr_rect = None
             if spr:
@@ -556,10 +534,11 @@ class BattleScreen:
                 draw_text(surf, e.title, self.fonts["hint"], BLACK, W // 2, by + bh + int(H * 0.025))
                 draw_text(surf, e.name,  self.fonts["menu"], BLACK, W // 2, by + bh + int(H * 0.065))
             else:
-                bw = int(W * 0.07 * zoom)
-                bh = max(4, int(H * 0.018 * zoom))
+                # 고정 크기 (줌에만 비례, 스프라이트 크기 무관)
+                bw = int(W * 0.08 * zoom)
+                bh = max(4, int(H * 0.015 * zoom))
                 bx = sx - bw // 2
-                by = spr_rect.top - int(H * 0.01 * zoom) if spr_rect else sy - int(H * 0.22 * zoom)
+                by = spr_rect.top - int(H * 0.02 * zoom) if spr_rect else sy - int(H * 0.25 * zoom)
                 pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
                 fill = int(bw * e.hp / e.hp_max)
                 pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
@@ -567,7 +546,7 @@ class BattleScreen:
 
         # ── 아군 ──────────────────────────────────────────────────
         ally_pos = self._ally_positions()
-        for j, (a, (ax, ay)) in enumerate(zip(self.allies, ally_pos)):
+        for j, (a, (ax, ay)) in reversed(list(enumerate(zip(self.allies, ally_pos)))):
             sx = to_sx(ax)
             sy = to_sy(ay)
             spr = self._ally_cache[j] if j < len(self._ally_cache) else None
@@ -580,8 +559,8 @@ class BattleScreen:
                 pygame.draw.rect(surf, GRAY, pygame.Rect(sx - size // 2, sy - size, size, size))
                 bar_top = sy - int(size + H * 0.01 * zoom)
 
-            bw = int(W * 0.09 * zoom)
-            bh = max(4, int(H * 0.018 * zoom))
+            bw = int(W * 0.08 * zoom)
+            bh = max(4, int(H * 0.015 * zoom))
             bx = sx - bw // 2
             by = bar_top
             pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))

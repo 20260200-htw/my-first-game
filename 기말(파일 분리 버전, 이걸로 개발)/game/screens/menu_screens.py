@@ -717,3 +717,71 @@ class QuitDialog:
 # ══════════════════════════════════════════════════════════════════
 #   폰트
 # ══════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════
+#   전투 선택 화면
+# ══════════════════════════════════════════════════════════════════
+class BattleSelectScreen:
+    def __init__(self, screen, W, H, fonts):
+        self.screen = screen
+        self.W, self.H = W, H
+        self.fonts = fonts
+        from data.battle_presets import BATTLE_PRESETS
+        self.presets = list(BATTLE_PRESETS.items())
+        self.selected = 0
+        self.scroll = 0
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                return "back"
+            elif event.key in (pygame.K_UP, pygame.K_w):
+                self.selected = max(0, self.selected - 1)
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                self.selected = min(len(self.presets) - 1, self.selected + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                return ("start", self.presets[self.selected][1])
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            for i, r in enumerate(self._item_rects()):
+                if r.collidepoint(mx, my):
+                    if i == self.selected:
+                        return ("start", self.presets[i][1])
+                    self.selected = i
+        elif event.type == pygame.MOUSEMOTION:
+            mx, my = event.pos
+            for i, r in enumerate(self._item_rects()):
+                if r.collidepoint(mx, my):
+                    self.selected = i
+        return None
+
+    def _item_rects(self):
+        W, H = self.W, self.H
+        item_h = int(H * 0.07)
+        start_y = int(H * 0.15)
+        rects = []
+        for i in range(len(self.presets)):
+            r = pygame.Rect(int(W * 0.2), start_y + i * item_h, int(W * 0.6), item_h - 4)
+            rects.append(r)
+        return rects
+
+    def update(self, dt):
+        pass
+
+    def draw(self):
+        W, H = self.W, self.H
+        surf = self.screen
+        surf.fill(WHITE)
+        draw_text(surf, "전투 선택", self.fonts["title"], BLACK, W // 2, int(H * 0.08))
+
+        for i, (key, preset) in enumerate(self.presets):
+            r = self._item_rects()[i]
+            if i == self.selected:
+                pygame.draw.rect(surf, BLACK, r)
+                draw_text(surf, preset["title"], self.fonts["menu"], WHITE, r.centerx, r.centery)
+            else:
+                pygame.draw.rect(surf, WHITE, r)
+                pygame.draw.rect(surf, BLACK, r, 1)
+                draw_text(surf, preset["title"], self.fonts["menu"], BLACK, r.centerx, r.centery)
+
+        draw_text(surf, "ESC: 뒤로", self.fonts["hint"], GRAY_D, W // 2, int(H * 0.93))
