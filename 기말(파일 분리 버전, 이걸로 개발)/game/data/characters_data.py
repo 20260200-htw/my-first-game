@@ -8,6 +8,7 @@ ENEMY_DEFS = {
         "magic_level":   100,
         "hp_max":        10000,
         "sprite":        "assets/KL_battle.png",
+        "profile":       "assets/KL_profile.png",
         "sprite_scale":  0.3,
         "click_w_ratio": 0.2,
         "background":    "assets/KL_T_BG.png",  # 배경 스프라이트
@@ -120,7 +121,7 @@ ENEMY_DEFS = {
                 "name":   "찌르기",
                 "power":  50,
                 "type":   "물리",
-                "target": "단일",
+                "side": "적", "count": "단일",
                 "hits":   1,
                 "tags":   ["필중"],
                 "sprite": "assets/KL_skills_1.png",
@@ -133,7 +134,7 @@ ENEMY_DEFS = {
                 "name":   "피하는 것이 좋을 겁니다",
                 "power":  80,
                 "type":   "물리",
-                "target": "단일",
+                "side": "적", "count": "단일",
                 "hits":   1,
                 "tags":   ["필중"],
                 "sprite": "assets/KL_skills_2.png",
@@ -147,7 +148,7 @@ ENEMY_DEFS = {
                 "name":   "이번 건 피할 수 없을 겁니다",
                 "power":  40,
                 "type":   "물리",
-                "target": "5인",
+                "side": "적", "count": "5인",
                 "hits":   1,
                 "tags":   ["난사"],
                 "sprite": "assets/KL_skills_3.png",
@@ -160,7 +161,7 @@ ENEMY_DEFS = {
                 "name":   "당신들도 예외는 아닙니다",
                 "power":  130,
                 "type":   "물리",
-                "target": "단일",
+                "side": "적", "count": "단일",
                 "hits":   1,
                 "tags":   ["필중"],
                 "sprite": "assets/KL_skills_4.png",
@@ -173,7 +174,7 @@ ENEMY_DEFS = {
                 "name":   "꿰뚫는 불꽃",
                 "power":  300,
                 "type":   "마법",
-                "target": "5인",
+                "side": "적", "count": "5인",
                 "hits":   3,
                 "tags":   [],
                 "sprite": "assets/KL_skills_5.png",
@@ -183,6 +184,7 @@ ENEMY_DEFS = {
                 ]
             },
         ],
+        "speed": 1,
     },
     "말단병사": {
         "title":         "",
@@ -193,6 +195,7 @@ ENEMY_DEFS = {
         "magic_level":   22,
         "hp_max":        1340,
         "sprite":        "assets/knight_maldan.png",
+        "profile":       "assets/maldan_profile.png",
         "sprite_scale":  0.4,
         "click_w_ratio": 0.2,
         "background":    "assets/battle_bg_castle.png",  # 배경 스프라이트
@@ -202,6 +205,11 @@ ENEMY_DEFS = {
             "",
             "중앙 왕국 기사단의 가장 낮은 계급의 기사입니다.",
             "기사단장의 명령으로 이번 전투에는 참전하지 않습니다.",
+        ],
+        "speed": 0,
+        "skills": [
+            {"name": "찌르기", "power": 20, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["창으로 찌른다."]},
         ],
     },
     "Eat_slime1": {
@@ -221,9 +229,15 @@ ENEMY_DEFS = {
         "magic_level":   2,
         "hp_max":        100,
         "sprite":        "assets/slime_eat1.png",
+        "profile":       "assets/slime_eat1_profile.png",
         "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
         "background":    "assets/battle_bg_forest.png",  # 배경 스프라이트
+        "speed_min": 2, "speed_max": 6,
+        "skills": [
+            {"name": "박치기", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["몸으로 부딪힌다."]},
+        ],
     },
     "Eat_slime2": {
         "title":         "",
@@ -242,8 +256,14 @@ ENEMY_DEFS = {
         "magic_level":   2,
         "hp_max":        140,
         "sprite":        "assets/slime_eat2.png",
+        "profile":       "assets/slime_eat2_profile.png",
         "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
+        "speed_min": 2, "speed_max": 6,
+        "skills": [
+            {"name": "산성 침", "power": 20, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["산성 액체를 뱉는다."]},
+        ],
     },
     "Eat_slime3": {
         "title":         "",
@@ -262,8 +282,14 @@ ENEMY_DEFS = {
         "magic_level":   21,
         "hp_max":        330,
         "sprite":        "assets/slime_eat3.png",
+        "profile":       "assets/slime_eat3_profile.png",
         "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
+        "speed_min": 1, "speed_max": 3,
+        "skills": [
+            {"name": "변형 강타", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["변형한 팔로 내려친다."]},
+        ],
     },
     "template": { #호출명
         "title":         "", #이명, 보스 전용
@@ -296,8 +322,16 @@ ALLY_DEFS = {
         "magic_level":   10,
         "hp_max":        100,
         "sprite":        "assets/main_character_B.png",
+        "profile":       "assets/main_profile.png",
         "sprite_scale":  0.25,
         "click_w_ratio": 0.2,
+        "speed":         5,
+        "skills": [
+            {"name": "휘두르기", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["기본적인 물리 공격."]},
+            {"name": "마력탄", "power": 25, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["기본적인 마법 공격."]},
+        ],
     },
     "아우렐리우스": {
         "name":          "아우렐리우스",
@@ -307,6 +341,7 @@ ALLY_DEFS = {
         "magic_level":   82,
         "hp_max":        3920,
         "sprite":        "assets/SHM_battle.png",
+        "profile":       "assets/SHM_profile.png",
         "sprite_scale":  0.3,
         "click_w_ratio": 0.2,
         "overview": [
@@ -357,6 +392,15 @@ ALLY_DEFS = {
                     "이 효과는 누구의 회복 효과든 발동이 가능하며, 중첩되지 않고 다음 턴이 되면 사라집니다.",
                 ]
             },
+        ],
+        "speed_min": 8, "speed_max": 12,
+        "skills": [
+            {"name": "성스러운 빛", "power": 60, "type": "마법", "side": "아군", "count": "단일", "hits": 1, "tags": ["회복", "지원"],
+             "sprite": "", "desc": ["아군 하나를 회복한다."]},
+            {"name": "심판의 일격", "power": 90, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["적에게 물리 피해를 입힌다."]},
+            {"name": "축복", "power": 40, "type": "마법", "side": "아군", "count": "5인", "hits": 1, "tags": ["회복", "지원"],
+             "sprite": "", "desc": ["아군 전체를 회복한다."]},
         ]
     },
     "금강": {
@@ -367,6 +411,7 @@ ALLY_DEFS = {
         "magic_level":   63,
         "hp_max":        3130,
         "sprite":        "assets/SFG_battle.png",
+        "profile":       "assets/SFG_profile.png",
         "sprite_scale":  0.25,
         "click_w_ratio": 0.2,
         "overview": [
@@ -414,6 +459,15 @@ ALLY_DEFS = {
                     "마법 스킬로 피해를 입으면 공격자에게 (물리 레벨)*2 만큼 물리 피해를 입힙니다.",
                 ]
             },
+        ],
+        "speed_min": 13, "speed_max": 17,
+        "skills": [
+            {"name": "금강", "power": 70, "type": "마법", "side": "자신", "count": "단일", "hits": 1, "tags": ["지원"],
+             "sprite": "", "desc": ["'금강' 상태가 된다."]},
+            {"name": "철권", "power": 100, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["강력한 물리 일격."]},
+            {"name": "연환격", "power": 35, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
+             "sprite": "", "desc": ["3회 연속 공격."]},
         ]
     },
     "마리": {
@@ -424,6 +478,7 @@ ALLY_DEFS = {
         "magic_level":   88,
         "hp_max":        2780,
         "sprite":        "assets/SSG_battle.png",
+        "profile":       "assets/SSG_profile.png",
         "sprite_scale":  0.25,
         "click_w_ratio": 0.2,
         "overview": [
@@ -480,6 +535,17 @@ ALLY_DEFS = {
                     "'선원': 중첩 당 최종 위력이 1 증가합니다. 최대 10회 중첩 가능합니다.",
                 ]
             },
+        ],
+        "speed_min": 21, "speed_max": 33,
+        "skills": [
+            {"name": "난무", "power": 10, "type": "물리", "side": "적", "count": "단일", "hits": 10, "tags": [],
+             "sprite": "", "motion": "stationary",
+             "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/SSG_nanmu_target.png",
+             "desc": ["10회 연속 공격."]},
+            {"name": "선장의 호령", "power": 35, "type": "마법", "side": "아군", "count": "5인", "hits": 1, "tags": ["지원"],
+             "sprite": "", "desc": ["아군 전체를 강화한다."]},
+            {"name": "쾌속 베기", "power": 50, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
+             "sprite": "", "desc": ["3회 연속 베기."]},
         ]
     },
     "막심 오그네프": {
@@ -490,6 +556,7 @@ ALLY_DEFS = {
         "magic_level":   91,
         "hp_max":        4160,
         "sprite":        "assets/super_snow_man.png",
+        "profile":       "assets/maxim_profile.png",
         "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
         "overview": [
@@ -500,44 +567,61 @@ ALLY_DEFS = {
         ],
         "passives": [
             {
-                "name": "왕국 기사단장",
+                "name": "북부 전선의 지휘관",
                 "desc": [
-                    "모든 피해로부터 받는 피해가 30% 감소합니다.",
-                    "자신이 적에게 가하는 모든 피해가 50% 증가합니다.",
+                    "자신이 적에게 가하는 모든 피해가 30% 증가합니다.",
+                    "대상이 마물 혹은 마족이라면 추가 10% 증가합니다.",
                 ]
             },
             {
-                "name": "기사단장의 명령",
+                "name": "총공세",
                 "desc": [
-                    "이번 전투에서 왕국 기사단이 참전하지 않습니다.",
-                    "또한 벨라가 '시험' 을 얻습니다.",
+                    "매 턴이 시작될 때마다 현재 마력의 10%를 소모합니다.",
+                    "소모한 마력만큼 자신이 사용하는 모든 마법 스킬이 추가 고정 피해를 입힙니다.",
                 ]
             },
             {
-                "name": "마력 발산 - 지옥불",
+                "name": "마력 발산 - 지휘관",
                 "desc": [
-                    "'마력 발산' 상태가 되면 모든 스킬의 최종 위력이 30 증가합니다.",
-                    "매 턴이 시작될 때마다 (물리 레벨+마법 레벨)*1 만큼 모든 적에게 마법 피해를 입힙니다.",
+                    "자신의 (현재 마력%÷2)%만큼 자신이 가하는 피해량이 증가합니다.",
+                    "",
+                    "자신을 제외한 모든 아군에게 다음 효과를 부여합니다.",
+                    "모든 공격 스킬의 최종 위력이 10 증가합니다.",
+                    "모든 수비 스킬의 최종 위력이 10 증가합니다.",
+                    "속도의 최솟값과 최댓값이 1 증가합니다.",
                 ]
             },
             {
-                "name": "지옥불 결계",
+                "name": "고양감",
                 "desc": [
-                    "매 턴이 시작될 때마다 보호막을 1000 만큼 얻습니다.",
-                    "적에게 피해를 받으면 즉시 파괴되며, 다음 턴이 되기 전까지 보호막을 얻지 않습니다.",
+                    "진행된 턴 수에 따라 다음 효과를 얻습니다.",
+                    "1~5턴: 매 턴이 시작될 때마다 자신의 최대 마력의 5%를 회복합니다.",
+                    "6~19턴: 자신이 적에게 가하는 모든 피해가 30% 증가합니다.",
+                    "20턴~: 모든 스킬의 최종 위력이 10 증가하고 이전까지의 효과를 모두 얻습니다.",
                 ]
             },
             {
-                "name": "전황 분석",
+                "name": "회로 작열",
                 "desc": [
-                    "매 턴이 시작될 때마다 '전황 분석' 중첩을 1 얻습니다.",
-                    "중첩 당 자신이 가하는 모든 피해가 5% 증가합니다.",
+                    "자신의 턴이 시작될 때, 현재 마력이 최대 마력의 30% 이하라면 최대 체력의 10% 만큼 피해를 받습니다.",
                 ]
             },
+            {
+                "name": "북부의 신호",
+                "desc": [
+                    "모든 행동 제어에 면역이 됩니다.",
+                    "또한 속도의 값이 변하지 않으며, 1로 고정됩니다.",
+                ]
+            },
+        ],
+        "speed": 1,
+        "skills": [
+            {"name": "화염포", "power": 120, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["강력한 마법 일격."]},
+            {"name": "북부의 불길", "power": 60, "type": "마법", "side": "적", "count": "5인", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["적 전체에게 마법 피해."]},
+            {"name": "관통사격", "power": 90, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "desc": ["물리 관통 공격."]},
         ]
     },
 }
-
-
-# ══════════════════════════════════════════════════════════════════
-#   전투 참가자 인스턴스

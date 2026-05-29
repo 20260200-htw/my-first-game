@@ -35,6 +35,16 @@ class Combatant:
         self.skills      = defn.get("skills", [])
         self.sprite      = None
         self.sprite_orig = None
+        self.profile     = None
+        self._load_profile(defn.get("profile", ""))
+
+        # 전투 상태
+        self.speed       = 0
+        self.shield      = 0
+        self.planned_skill = None
+        self.defending   = False  # 이번 턴 방어 중
+        self.dodging     = False  # 이번 턴 회피 중
+
         self._load_sprite(defn["sprite"], max_sprite_w, max_sprite_h)
 
     def _load_sprite(self, path, max_w, max_h):
@@ -60,3 +70,65 @@ class Combatant:
             except Exception:
                 self.sprite = None
                 self.sprite_orig = None
+
+    def _load_profile(self, path):
+        import pygame, os
+        if path and os.path.exists(path):
+            try:
+                self.profile = pygame.image.load(path).convert_alpha()
+            except Exception:
+                self.profile = None
+
+    # ── 전투 계산 ─────────────────────────────────────────────
+    POWER_PER_LEVEL  = 1/5   # 레벨 5당 위력 +1
+    DAMAGE_PER_LEVEL = 0.04  # 레벨당 데미지 +4%
+
+    def roll_speed(self):
+        """매 턴 속도 결정. 속도 0이면 행동 불가(None 반환)"""
+        import random
+        spd = self.defn.get("speed", None)
+        spd_min = self.defn.get("speed_min", None)
+        spd_max = self.defn.get("speed_max", None)
+        if spd is not None:
+            self.speed = spd
+        elif spd_min is not None and spd_max is not None:
+            self.speed = random.randint(spd_min, spd_max)
+        else:
+            self.speed = 0
+        return self.speed
+
+    def calc_skill_power(self, skill):
+        """스킬 최종 위력 = 기본 위력 + 레벨 보정"""
+        return skill["power"] + (self.level * self.POWER_PER_LEVEL)
+
+    def calc_damage(self, skill):
+        """스킬 1히트 피해량 계산"""
+        final_power = self.calc_skill_power(skill)
+        if skill["type"] == "물리":
+            dmg = final_power * (1 + self.phys_level * self.DAMAGE_PER_LEVEL)
+        elif skill["type"] == "마법":
+            dmg = final_power * (1 + self.magic_level * self.DAMAGE_PER_LEVEL)
+        else:
+            dmg = final_power
+        return dmg
+
+    def calc_shield(self):
+        """방어 시 보호막 = 레벨 + 물리 레벨 + 마법 레벨"""
+        return self.level + self.phys_level + self.magic_level
+
+    def calc_dodge_power(self, item_bonus=0):
+        """회피 최종 위력 = 레벨 + 아이템 보정"""
+        return self.level + item_bonus
+
+    def take_damage(self, dmg):
+        """피해 적용 (보호막 우선 차감)"""
+        dmg = int(dmg)
+        if self.shield > 0:
+            if dmg <= self.shield:
+                self.shield -= dmg
+                return 0
+            else:
+                dmg -= self.shield
+                self.shield = 0
+        self.hp = max(0, self.hp - dmg)
+        return dmg

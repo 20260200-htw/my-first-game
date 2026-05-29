@@ -3,6 +3,7 @@ import os
 from utils import *
 from combatant import Combatant
 from data.characters_data import ENEMY_DEFS, ALLY_DEFS
+from battle_logic import BattleLogic
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -25,7 +26,11 @@ class BattleScreen:
     ZOOM_STEP      = 0.1
 
     STATE_MENU   = "menu"
+    STATE_SKILL  = "skill"
     STATE_TARGET = "target"
+    STATE_ENEMY  = "enemy"
+    STATE_ANIM   = "anim"
+    STATE_OVER   = "over"
 
     TAB_NAMES = ["개요", "스킬", "패시브"]
 
@@ -97,7 +102,16 @@ class BattleScreen:
         self.state           = self.STATE_MENU
         self.menu_selected   = 0
         self.target_selected = 0
-        self.UI_ITEMS        = ["공격", "수비", "아이템"]
+        self.skill_selected  = 0
+        self.UI_ITEMS        = ["스킬", "수비", "아이템"]
+        self.pending_skill   = None   # 선택한 스킬 (대상 선택 대기)
+        self.current_actor   = None
+
+        # 전투 로직
+        self.logic = BattleLogic(self.enemies, self.allies)
+        self.logic.start_turn()
+        self.enemy_timer = 0.0
+        self._sync_turn()
 
         self.inspect_enemy   = None
         self.inspect_ally    = None
@@ -136,6 +150,19 @@ class BattleScreen:
                     if y + 1 < H: vignette.set_at((x, y+1), (0, 0, 0, a))
                     if x+1 < W and y+1 < H: vignette.set_at((x+1, y+1), (0, 0, 0, a))
         self._vignette = vignette
+        self._skill_icon_cache = {}
+        self.order_expanded = False  # 행동 서열 펼치기
+        self._order_btn_rect = None
+
+        # ── 스킬 모션 애니메이션 ──────────────────────────────
+        self.anim = None          # 진행 중인 애니메이션 데이터
+        self.shake_timer = 0.0    # 카메라 쉐이크 남은 시간
+        self.shake_mag   = 0      # 쉐이크 강도
+        self.effect_sprite = None # 현재 재생 중인 이펙트
+        self.effect_pos    = (0, 0)
+        self.effect_timer  = 0.0
+        self.effects       = []   # [{img, target, timer}] 다중 이펙트
+        self.anim_actor_offset = {}  # {combatant: (dx, dy)} 모션 중 위치 보정
 
     def _ui_rect(self):
         W, H = self.W, self.H
@@ -298,10 +325,12 @@ class BattleScreen:
             return None
 
         if event.type == pygame.KEYDOWN:
+            if self.state == self.STATE_ANIM:
+                return None  # 모션 중 입력 무시
             if event.key == pygame.K_ESCAPE:
-                if self.state == self.STATE_TARGET:
-                    self.state = self.STATE_MENU
-                else:
+                if self.state in (self.STATE_TARGET, self.STATE_SKILL):
+                    pass  # 각 상태에서 개별 처리
+                elif self.state in (self.STATE_MENU, self.STATE_OVER, self.STATE_ENEMY):
                     pygame.mixer.music.stop()
                     return "back"
             elif self.state == self.STATE_MENU:
@@ -310,17 +339,36 @@ class BattleScreen:
                 elif event.key in (pygame.K_DOWN, pygame.K_s):
                     self.menu_selected = (self.menu_selected + 1) % len(self.UI_ITEMS)
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                    if self.UI_ITEMS[self.menu_selected] == "공격":
+                    if self.UI_ITEMS[self.menu_selected] == "스킬":
+                        self.state = self.STATE_SKILL
+                        self.skill_selected = 0
+                    elif self.UI_ITEMS[self.menu_selected] == "수비":
+                        self._do_defend()
+            elif self.state == self.STATE_SKILL:
+                actor = self.logic.current_actor()
+                skills = actor.skills if actor else []
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self.skill_selected = (self.skill_selected - 1) % max(1, len(skills))
+                elif event.key in (pygame.K_DOWN, pygame.K_s):
+                    self.skill_selected = (self.skill_selected + 1) % max(1, len(skills))
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    if skills:
+                        self.pending_skill = skills[self.skill_selected]
                         self.state = self.STATE_TARGET
                         self.target_selected = 0
+                elif event.key == pygame.K_ESCAPE:
+                    self.state = self.STATE_MENU
             elif self.state == self.STATE_TARGET:
+                pool = self._target_list()
+                n = max(1, len(pool))
                 if event.key in (pygame.K_UP, pygame.K_w):
-                    self.target_selected = (self.target_selected - 1) % len(self.enemies)
+                    self.target_selected = (self.target_selected - 1) % n
                 elif event.key in (pygame.K_DOWN, pygame.K_s):
-                    self.target_selected = (self.target_selected + 1) % len(self.enemies)
+                    self.target_selected = (self.target_selected + 1) % n
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._do_attack(self.target_selected)
-                    self.state = self.STATE_MENU
+                elif event.key == pygame.K_ESCAPE:
+                    self.state = self.STATE_SKILL
 
         elif event.type == pygame.MOUSEMOTION:
             mx, my = event.pos
@@ -333,27 +381,44 @@ class BattleScreen:
                 max_y_down = self.H * 0.05
                 self.cam_x = max(-max_x, min(max_x, self.drag_start_cam[0] - dx))
                 self.cam_y = max(-max_y_up, min(max_y_down, self.drag_start_cam[1] - dy))
-            # UI 호버
+            # UI 호버 (UI 내부에 마우스가 있을 때만 반응)
             if self.state == self.STATE_MENU:
                 ui     = self._ui_rect()
-                item_h = ui.height // (len(self.UI_ITEMS) + 1)
-                for i in range(len(self.UI_ITEMS)):
-                    cy = ui.top + item_h * (i + 1)
-                    if abs(my - cy) < item_h // 2:
-                        self.menu_selected = i
+                if ui.collidepoint(mx, my):
+                    item_h = ui.height // (len(self.UI_ITEMS) + 1)
+                    for i in range(len(self.UI_ITEMS)):
+                        cy = ui.top + item_h * (i + 1)
+                        if abs(my - cy) < item_h // 2:
+                            self.menu_selected = i
+            elif self.state == self.STATE_SKILL:
+                actor = self.logic.current_actor()
+                skills = actor.skills if actor else []
+                tr = self._target_rect()
+                if tr.collidepoint(mx, my) and skills:
+                    slot_h = tr.height // max(5, len(skills))
+                    for i in range(len(skills)):
+                        slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                        if slot_rect.collidepoint(mx, my):
+                            self.skill_selected = i
             elif self.state == self.STATE_TARGET:
                 tr     = self._target_rect()
-                slot_h = tr.height // 5
-                for i in range(len(self.enemies)):
-                    slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
-                    if slot_rect.collidepoint(mx, my):
-                        self.target_selected = i
+                if tr.collidepoint(mx, my):
+                    pool = self._target_list()
+                    slot_h = tr.height // 5
+                    for i in range(len(pool)):
+                        slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                        if slot_rect.collidepoint(mx, my):
+                            self.target_selected = i
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             ui = self._ui_rect()
             tr = self._target_rect()
-            on_ui = ui.collidepoint(mx, my) or (self.state == self.STATE_TARGET and tr.collidepoint(mx, my))
+            # 행동 서열 펼치기 버튼
+            if self._order_btn_rect and self._order_btn_rect.collidepoint(mx, my):
+                self.order_expanded = not self.order_expanded
+                return None
+            on_ui = ui.collidepoint(mx, my) or (self.state in (self.STATE_TARGET, self.STATE_SKILL) and tr.collidepoint(mx, my))
             # 적 스프라이트 클릭
             for i in range(len(self.enemies)):
                 r = self._enemy_sprite_rect(i)
@@ -366,22 +431,36 @@ class BattleScreen:
                 if r and r.collidepoint(mx, my):
                     self._open_inspect(self.allies[i])
                     return None
-            if self.state == self.STATE_MENU:
+            if self.state == self.STATE_MENU and ui.collidepoint(mx, my):
                 item_h = ui.height // (len(self.UI_ITEMS) + 1)
                 for i in range(len(self.UI_ITEMS)):
                     cy = ui.top + item_h * (i + 1)
-                    if abs(my - cy) < item_h // 2 and ui.left <= mx <= ui.right:
+                    if abs(my - cy) < item_h // 2:
                         self.menu_selected = i
-                        if self.UI_ITEMS[i] == "공격":
+                        if self.UI_ITEMS[i] == "스킬":
+                            self.state = self.STATE_SKILL
+                            self.skill_selected = 0
+                        elif self.UI_ITEMS[i] == "수비":
+                            self._do_defend()
+            elif self.state == self.STATE_SKILL and tr.collidepoint(mx, my):
+                actor = self.logic.current_actor()
+                skills = actor.skills if actor else []
+                if skills:
+                    slot_h = tr.height // max(5, len(skills))
+                    for i in range(len(skills)):
+                        slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                        if slot_rect.collidepoint(mx, my):
+                            self.pending_skill = skills[i]
+                            self.skill_selected = i
                             self.state = self.STATE_TARGET
                             self.target_selected = 0
-            elif self.state == self.STATE_TARGET:
+            elif self.state == self.STATE_TARGET and tr.collidepoint(mx, my):
+                pool = self._target_list()
                 slot_h = tr.height // 5
-                for i in range(len(self.enemies)):
+                for i in range(len(pool)):
                     slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
                     if slot_rect.collidepoint(mx, my):
                         self._do_attack(i)
-                        self.state = self.STATE_MENU
             # UI 아닌 곳 클릭 → 카메라 드래그 시작
             if not on_ui:
                 self.dragging = True
@@ -390,6 +469,14 @@ class BattleScreen:
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.dragging = False
+
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            # 우클릭: 뒤로 가기 (선택 취소)
+            if self.state == self.STATE_TARGET:
+                self.state = self.STATE_SKILL
+                self.pending_skill = None
+            elif self.state == self.STATE_SKILL:
+                self.state = self.STATE_MENU
 
         elif event.type == pygame.MOUSEWHEEL:
             self.zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self.zoom + self.ZOOM_STEP * event.y))
@@ -402,12 +489,234 @@ class BattleScreen:
 
         return None
 
+    def _sync_turn(self):
+        """현재 행동자에 맞춰 상태 전환"""
+        if self.logic.battle_over:
+            self.state = self.STATE_OVER
+            return
+        actor = self.logic.current_actor()
+        if actor is None:
+            return
+        if actor in self.allies and actor.ctype in ("player", "ally"):
+            # 아군(플레이어 조작) 턴
+            self.state = self.STATE_MENU
+            self.menu_selected = 0
+            self.current_actor = actor
+        else:
+            # 적 턴 → 자동 진행
+            self.state = self.STATE_ENEMY
+            self.enemy_timer = 0.0
+            self.current_actor = actor
+
+    def _target_list(self):
+        """현재 pending_skill의 진영에 따른 대상 후보 리스트"""
+        actor = self.logic.current_actor()
+        skill = self.pending_skill
+        if actor is None or skill is None:
+            return []
+        side = skill.get("side", "적")
+        if side == "자신":
+            return [actor]
+        elif side == "아군":
+            return [c for c in self.logic.allies_of(actor) if c.hp > 0]
+        else:  # 적
+            return [c for c in self.logic.enemies_of(actor) if c.hp > 0]
+
+    # 근접 다단히트 모션을 쓰는 스킬
+    MELEE_RUSH_SKILLS = {"난무", "쾌속 베기"}
+
     def _do_attack(self, target_idx):
-        target = self.enemies[target_idx]
-        target.hp = max(0, target.hp - 100)
+        """플레이어가 지정한 대상으로 스킬 사용 (적/아군/자신 공통)"""
+        actor = self.logic.current_actor()
+        if actor is None or self.pending_skill is None:
+            return
+        skill = self.pending_skill
+        pool = self._target_list()
+        primary = None
+        if 0 <= target_idx < len(pool):
+            primary = pool[target_idx]
+        elif pool:
+            primary = pool[0]
+
+        # 근접 다단히트 모션 스킬이면 애니메이션 시작
+        if skill["name"] in self.MELEE_RUSH_SKILLS and primary is not None:
+            targets = self.logic.resolve_targets(actor, skill, primary)
+            self._start_melee_rush(actor, skill, primary, targets)
+            self.pending_skill = None
+            return
+
+        # 그 외 즉시 처리
+        self.logic.use_skill(actor, skill, primary_target=primary)
+        self.pending_skill = None
+        self.logic.advance()
+        self._sync_turn()
+
+    def _start_melee_rush(self, actor, skill, primary, targets):
+        """마리 근접 다단히트 모션 시작"""
+        hits = skill.get("hits", 1)
+        self.anim = {
+            "type":    "melee_rush",
+            "actor":   actor,
+            "skill":   skill,
+            "primary": primary,
+            "targets": targets,
+            "hits":    hits,
+            "hit_done": 0,
+            "phase":   "zoom_in",   # zoom_in → approach → (dash → reset)*hits → return
+            "timer":   0.0,
+        }
+        self.state = self.STATE_ANIM
+        # 카메라 줌인 목표 저장
+        self._anim_cam_start = (self.cam_x, self.cam_y, self.zoom)
+
+    def _anim_actor_offset(self, combatant):
+        """모션 중인 actor의 위치 오프셋 (월드 좌표)"""
+        a = self.anim
+        if not a or a.get("type") != "melee_rush" or a["actor"] is not combatant:
+            return (0, 0)
+        W, H = self.W, self.H
+        # 대상 위치
+        primary = a["primary"]
+        if primary in self.enemies:
+            pi = self.enemies.index(primary)
+            tx, ty = self._enemy_positions()[pi]
+        else:
+            return (0, 0)
+        # 마리 원래 위치
+        ai = self.allies.index(a["actor"])
+        ox0, oy0 = self._ally_positions()[ai]
+        # 대상 왼쪽 위치 / 오른쪽(지나간) 위치
+        left_x  = tx - int(W * 0.10)
+        right_x = tx + int(W * 0.10)
+        phase = a["phase"]
+        t = a["timer"]
+        if phase == "zoom_in":
+            return (0, 0)
+        elif phase == "approach":
+            p = min(1.0, t / self.ANIM_APPROACH)
+            cx = ox0 + (left_x - ox0) * p
+            cy = oy0 + (ty - oy0) * p
+            return (cx - ox0, cy - oy0)
+        stationary = a["skill"].get("motion") == "stationary"
+        if phase == "dash":
+            if stationary:
+                # 제자리(대상 왼쪽)에서 공격
+                return (left_x - ox0, ty - oy0)
+            p = min(1.0, t / self.ANIM_DASH)
+            cx = left_x + (right_x - left_x) * p
+            return (cx - ox0, ty - oy0)
+        elif phase == "reset":
+            if stationary:
+                return (left_x - ox0, ty - oy0)
+            p = min(1.0, t / self.ANIM_RESET)
+            cx = right_x + (left_x - right_x) * p
+            return (cx - ox0, ty - oy0)
+        elif phase == "return":
+            start_x = left_x if stationary else right_x
+            p = min(1.0, t / self.ANIM_RETURN)
+            cx = start_x + (ox0 - start_x) * p
+            cy = ty + (oy0 - ty) * p
+            return (cx - ox0, cy - oy0)
+        return (0, 0)
+
+    def _do_defend(self):
+        actor = self.logic.current_actor()
+        if actor:
+            self.logic.do_defend(actor)
+            self.logic.advance()
+            self._sync_turn()
+
+    # 모션 단계별 지속시간(ms)
+    ANIM_ZOOM_IN  = 200
+    ANIM_APPROACH = 250
+    ANIM_DASH     = 200
+    ANIM_RESET    = 150
+    ANIM_RETURN   = 250
 
     def update(self, dt):
-        pass
+        # 쉐이크 감쇠
+        if self.shake_timer > 0:
+            self.shake_timer = max(0, self.shake_timer - dt)
+        # 이펙트 타이머
+        if self.effects:
+            for ef in self.effects:
+                ef["timer"] = max(0, ef["timer"] - dt)
+            self.effects = [ef for ef in self.effects if ef["timer"] > 0]
+
+        # 적 턴 자동 진행
+        if self.state == self.STATE_ENEMY:
+            self.enemy_timer += dt
+            if self.enemy_timer >= 700:
+                actor = self.logic.current_actor()
+                if actor:
+                    self.logic.enemy_action(actor)
+                self._sync_turn()
+                self.enemy_timer = 0.0
+
+        # 스킬 모션 진행
+        elif self.state == self.STATE_ANIM and self.anim:
+            self._update_melee_rush(dt)
+
+    def _update_melee_rush(self, dt):
+        a = self.anim
+        a["timer"] += dt
+        phase = a["phase"]
+
+        if phase == "zoom_in":
+            if a["timer"] >= self.ANIM_ZOOM_IN:
+                a["phase"] = "approach"; a["timer"] = 0.0
+        elif phase == "approach":
+            if a["timer"] >= self.ANIM_APPROACH:
+                a["phase"] = "dash"; a["timer"] = 0.0
+        elif phase == "dash":
+            # 모션 중간(절반)에 피해 적용 + 쉐이크 + 이펙트
+            if not a.get("hit_applied") and a["timer"] >= self.ANIM_DASH * 0.5:
+                self.logic.apply_single_hit(a["actor"], a["skill"], a["targets"])
+                a["hit_applied"] = True
+                a["hit_done"] += 1
+                self.shake_timer = 120
+                self.shake_mag = int(self.H * 0.012)
+                self._play_skill_effect(a["skill"], a["primary"])
+            if a["timer"] >= self.ANIM_DASH:
+                a["hit_applied"] = False
+                if a["hit_done"] >= a["hits"] or self.logic.battle_over:
+                    a["phase"] = "return"; a["timer"] = 0.0
+                else:
+                    a["phase"] = "reset"; a["timer"] = 0.0
+        elif phase == "reset":
+            if a["timer"] >= self.ANIM_RESET:
+                a["phase"] = "dash"; a["timer"] = 0.0
+        elif phase == "return":
+            if a["timer"] >= self.ANIM_RETURN:
+                # 모션 종료 → 다음 캐릭터
+                self.anim = None
+                self.effects = []
+                self.logic.advance()
+                self._sync_turn()
+
+    def _load_effect_img(self, path):
+        if path and os.path.exists(path):
+            try:
+                raw = pygame.image.load(path).convert_alpha()
+                size = int(self.W * 0.12)
+                return pygame.transform.smoothscale(raw, (size, size))
+            except Exception:
+                return None
+        return None
+
+    def _play_skill_effect(self, skill, target):
+        self.effects = []
+        actor = self.anim["actor"] if self.anim else None
+        # 적/대상 이펙트
+        tgt_path = skill.get("effect_target", skill.get("effect", skill.get("sprite", "")))
+        img = self._load_effect_img(tgt_path)
+        if img:
+            self.effects.append({"img": img, "target": target, "timer": 200})
+        # 마리(자신) 이펙트 (effect_self가 있을 때만)
+        self_path = skill.get("effect_self", "")
+        img2 = self._load_effect_img(self_path)
+        if img2 and actor is not None:
+            self.effects.append({"img": img2, "target": actor, "timer": 200})
 
     def _enemy_positions(self):
         from data.battle_presets import ENEMY_FORMATIONS
@@ -451,7 +760,40 @@ class BattleScreen:
     def draw(self):
         W, H = self.W, self.H
         surf = self.screen
-        zoom = self.zoom
+
+        # ── 애니메이션 중 카메라/쉐이크 보정 ─────────────────────
+        anim_cam_dx = 0.0
+        anim_cam_dy = 0.0
+        anim_zoom_mul = 1.0
+        if self.state == self.STATE_ANIM and self.anim and self.anim["actor"] in self.allies:
+            # 마리의 현재(이동 중) 위치를 카메라가 따라감 + 확대
+            ai = self.allies.index(self.anim["actor"])
+            ax, ay = self._ally_positions()[ai]
+            ox, oy = self._anim_actor_offset(self.anim["actor"])
+            ax += ox; ay += oy
+            anim_cam_dx = (ax - W / 2)
+            anim_cam_dy = (ay - H / 2)
+            anim_zoom_mul = 1.4
+        # 쉐이크
+        shake_x = shake_y = 0
+        if self.shake_timer > 0:
+            import random as _r
+            shake_x = _r.randint(-self.shake_mag, self.shake_mag)
+            shake_y = _r.randint(-self.shake_mag, self.shake_mag)
+
+        # 실제 적용 카메라/줌 (원본 보존)
+        base_cam_x, base_cam_y, base_zoom = self.cam_x, self.cam_y, self.zoom
+        if self.state == self.STATE_ANIM and self.anim:
+            # 모션 중: 사용자 줌/카메라 무시, 고정 줌으로 마리만 비춤
+            eff_cam_x = anim_cam_dx + shake_x
+            eff_cam_y = anim_cam_dy + shake_y
+            eff_zoom  = 1.4
+        else:
+            eff_cam_x = self.cam_x + anim_cam_dx + shake_x
+            eff_cam_y = self.cam_y + anim_cam_dy + shake_y
+            eff_zoom  = self.zoom * anim_zoom_mul
+
+        zoom = eff_zoom
 
         # 스프라이트 캐시 갱신 (줌 변경 시에만)
         if self._cache_zoom != zoom:
@@ -482,8 +824,8 @@ class BattleScreen:
             self._cache_zoom = zoom
 
         # 화면 → 줌/카메라 적용 좌표 변환
-        def to_sx(wx): return int((wx - W / 2 - self.cam_x) * zoom + W / 2)
-        def to_sy(wy): return int((wy - H / 2 - self.cam_y) * zoom + H / 2)
+        def to_sx(wx): return int((wx - W / 2 - eff_cam_x) * zoom + W / 2)
+        def to_sy(wy): return int((wy - H / 2 - eff_cam_y) * zoom + H / 2)
 
         # ── 배경 (125% 크기로 로드됨, 줌 1.0 = 화면 꽉 채움) ───
         surf.fill((0, 0, 0))
@@ -492,8 +834,8 @@ class BattleScreen:
             draw_w = int(bw * zoom)
             draw_h = int(bh * zoom)
             scaled_bg = pygame.transform.smoothscale(self.background, (draw_w, draw_h))
-            bx = int(W / 2 - draw_w / 2 - self.cam_x * zoom)
-            by = int(H / 2 - draw_h / 2 - self.cam_y * zoom)
+            bx = int(W / 2 - draw_w / 2 - eff_cam_x * zoom)
+            by = int(H / 2 - draw_h / 2 - eff_cam_y * zoom)
             surf.blit(scaled_bg, (bx, by))
         else:
             surf.fill(WHITE)
@@ -504,13 +846,15 @@ class BattleScreen:
             draw_w = int(fw * zoom)
             draw_h = int(fh * zoom)
             scaled_floor = pygame.transform.smoothscale(self.floor, (draw_w, draw_h))
-            fx = int(W / 2 - draw_w / 2 - self.cam_x * zoom)
-            fy = int(H / 2 - draw_h / 2 - self.cam_y * zoom)
+            fx = int(W / 2 - draw_w / 2 - eff_cam_x * zoom)
+            fy = int(H / 2 - draw_h / 2 - eff_cam_y * zoom)
             surf.blit(scaled_floor, (fx, fy))
 
         # ── 적 ────────────────────────────────────────────────────
         enemy_pos = self._enemy_positions()
         for i, (e, (ex, ey)) in reversed(list(enumerate(zip(self.enemies, enemy_pos)))):
+            if e.hp <= 0:
+                continue
             sx = to_sx(ex)
             sy = to_sy(ey)
             spr = self._enemy_cache[i] if i < len(self._enemy_cache) else None
@@ -547,6 +891,11 @@ class BattleScreen:
         # ── 아군 ──────────────────────────────────────────────────
         ally_pos = self._ally_positions()
         for j, (a, (ax, ay)) in reversed(list(enumerate(zip(self.allies, ally_pos)))):
+            if a.hp <= 0:
+                continue
+            # 모션 중인 actor 위치 보정
+            ox, oy = self._anim_actor_offset(a)
+            ax += ox; ay += oy
             sx = to_sx(ax)
             sy = to_sy(ay)
             spr = self._ally_cache[j] if j < len(self._ally_cache) else None
@@ -583,17 +932,63 @@ class BattleScreen:
             else:
                 draw_text(surf, item, self.fonts["menu"], BLACK, ui.centerx, cy)
 
+        # ── 스킬 선택 창 ──────────────────────────────────────────
+        if self.state == self.STATE_SKILL:
+            actor = self.logic.current_actor()
+            skills = actor.skills if actor else []
+            tr = self._target_rect()
+            slot_h = tr.height // max(5, len(skills))
+            pygame.draw.rect(surf, WHITE, tr)
+            pygame.draw.rect(surf, BLACK, tr, 2)
+            for i, sk in enumerate(skills):
+                slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                pygame.draw.line(surf, GRAY, (tr.left, tr.top + i * slot_h), (tr.right, tr.top + i * slot_h), 1)
+                sel = (i == self.skill_selected)
+                cy = slot_rect.centery
+                label = sk['name']
+                if sel:
+                    pygame.draw.rect(surf, BLACK, slot_rect)
+                    draw_text(surf, label, self.fonts["menu"], WHITE, tr.centerx, cy)
+                else:
+                    draw_text(surf, label, self.fonts["menu"], BLACK, tr.centerx, cy)
+
+            # ── 선택된 스킬 정보 박스 (스킬 선택창 위) ───────────
+            if skills and 0 <= self.skill_selected < len(skills):
+                sk = skills[self.skill_selected]
+                info_h = int(H * 0.16)
+                info_rect = pygame.Rect(tr.left, tr.top - info_h - int(H * 0.01), tr.width, info_h)
+                pygame.draw.rect(surf, WHITE, info_rect)
+                pygame.draw.rect(surf, BLACK, info_rect, 2)
+                pad = int(W * 0.008)
+                ix = info_rect.left + pad
+                iy = info_rect.top + pad
+                # 스킬명
+                draw_text_left(surf, sk['name'], self.fonts["hint_bold"], BLACK, ix, iy + int(H * 0.015))
+                # 위력/유형/대상
+                side  = sk.get("side", "")
+                count = sk.get("count", "")
+                hits  = sk.get("hits", 1)
+                hits_str = f"  {hits}회" if hits > 1 else ""
+                line2 = f"위력 {sk['power']}  |  {sk['type']}  |  {side} {count}{hits_str}"
+                draw_text_left(surf, line2, self.fonts["small_bold"], GRAY_D, ix, iy + int(H * 0.045))
+                # 설명 (최대 2줄)
+                dy = iy + int(H * 0.072)
+                for line in sk.get("desc", [])[:3]:
+                    draw_text_left(surf, line, self.fonts["small_bold"], BLACK, ix, dy)
+                    dy += int(H * 0.028)
+
         # ── 대상 선택 창 ──────────────────────────────────────────
         if self.state == self.STATE_TARGET:
             tr     = self._target_rect()
             slot_h = tr.height // 5
+            pool   = self._target_list()
             pygame.draw.rect(surf, WHITE, tr)
             pygame.draw.rect(surf, BLACK, tr, 2)
             for i in range(5):
                 slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
                 pygame.draw.line(surf, GRAY, (tr.left, tr.top + i * slot_h), (tr.right, tr.top + i * slot_h), 1)
-                if i < len(self.enemies):
-                    e   = self.enemies[i]
+                if i < len(pool):
+                    e   = pool[i]
                     sel = (i == self.target_selected)
                     cy  = slot_rect.centery
                     if sel:
@@ -602,6 +997,38 @@ class BattleScreen:
                     else:
                         draw_text(surf, e.name, self.fonts["menu"], BLACK, tr.centerx, cy)
 
+        # ── 전투 종료 화면 ───────────────────────────────────────
+        if self.state == self.STATE_OVER:
+            overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            surf.blit(overlay, (0, 0))
+            msg = "승리!" if self.logic.winner == "ally" else "패배..."
+            color = (255, 230, 100) if self.logic.winner == "ally" else (255, 80, 80)
+            draw_text(surf, msg, self.fonts["title"], color, W // 2, H // 2)
+            draw_text(surf, "ESC: 나가기", self.fonts["hint"], WHITE, W // 2, H // 2 + int(H * 0.08))
+
+        # ── 스킬 이펙트 스프라이트 ───────────────────────────────
+        for ef in self.effects:
+            t = ef["target"]
+            if t in self.enemies:
+                ti = self.enemies.index(t)
+                tx, ty = self._enemy_positions()[ti]
+            elif t in self.allies:
+                ti = self.allies.index(t)
+                tx, ty = self._ally_positions()[ti]
+                # 마리 모션 중이면 현재 위치 반영
+                ox, oy = self._anim_actor_offset(t)
+                tx += ox; ty += oy
+            else:
+                tx, ty = W // 2, H // 2
+            esx = to_sx(tx)
+            esy = to_sy(ty - int(H * 0.15))
+            er = ef["img"].get_rect(center=(esx, esy))
+            surf.blit(ef["img"], er)
+
+        # ── 행동 서열 UI (좌측 상단) ─────────────────────────────
+        self._draw_turn_order()
+
         # ── 비네팅 ───────────────────────────────────────────────
         surf.blit(self._vignette, (0, 0))
 
@@ -609,6 +1036,116 @@ class BattleScreen:
         c = self._inspect_target()
         if c is not None:
             self._draw_inspect_overlay(c)
+
+    def _draw_turn_order(self):
+        """좌측 상단 행동 서열 UI (현재 행동자부터 최대 3개 + 턴 종료)"""
+        if self.state == self.STATE_OVER:
+            return
+        W, H = self.W, self.H
+        surf = self.screen
+        order = self.logic.turn_order
+        idx   = self.logic.order_idx
+        if not order:
+            return
+
+        # 현재 행동자부터 남은 유닛들
+        remaining = order[idx:]
+        box_w = int(W * 0.16)
+        box_h = int(H * 0.07)
+        gap   = int(H * 0.012)
+        margin_x = int(W * 0.015)
+        margin_y = int(H * 0.015)
+
+        slots = []  # (combatant or None for 턴종료)
+        if self.order_expanded:
+            # 전체 표시
+            for c in remaining:
+                slots.append(c)
+            slots.append(None)  # 턴 종료
+        else:
+            for c in remaining[:3]:
+                slots.append(c)
+            if len(slots) < 3:
+                slots.append(None)
+
+        for si, c in enumerate(slots):
+            bx = margin_x
+            by = margin_y + si * (box_h + gap)
+            box = pygame.Rect(bx, by, box_w, box_h)
+
+            if c is None:
+                # 턴 종료 박스
+                s = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                s.fill((60, 60, 60, 180))
+                surf.blit(s, (bx, by))
+                pygame.draw.rect(surf, (200, 200, 200), box, 2)
+                draw_text(surf, f"{self.logic.turn_count}턴 종료", self.fonts["hint_bold"], WHITE, box.centerx, box.centery)
+                continue
+
+            is_ally = c in self.allies
+            if is_ally:
+                color = (60, 120, 255, 150)
+                border = (120, 170, 255)
+            else:
+                color = (255, 60, 60, 150)
+                border = (255, 120, 120)
+
+            s = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+            s.fill(color)
+            surf.blit(s, (bx, by))
+            # 현재 행동자(맨 위) 강조 테두리
+            bw = 3 if si == 0 else 1
+            pygame.draw.rect(surf, border, box, bw)
+
+            # 프로필 (좌측 정사각)
+            prof_size = box_h - int(H * 0.012)
+            prof_rect = pygame.Rect(bx + int(H*0.006), by + int(H*0.006), prof_size, prof_size)
+            if c.profile:
+                pimg = pygame.transform.smoothscale(c.profile, (prof_size, prof_size))
+                surf.blit(pimg, prof_rect)
+            else:
+                pygame.draw.rect(surf, (40, 40, 40), prof_rect)
+            pygame.draw.rect(surf, WHITE, prof_rect, 1)
+
+            # 속도 값 | 턴 수
+            tx = prof_rect.right + int(W * 0.008)
+            draw_text_left(surf, c.name, self.fonts["small_bold"], WHITE, tx, box.centery - int(H*0.015))
+            info = f"속도 {c.speed}  |  {self.logic.turn_count}턴"
+            draw_text_left(surf, info, self.fonts["small_bold"], WHITE, tx, box.centery + int(H*0.012))
+
+            # 적이면 오른쪽에 사용 예정 스킬 아이콘
+            if not is_ally:
+                skill = getattr(c, "planned_skill", None)
+                icon_size = prof_size
+                icon_rect = pygame.Rect(box.right - icon_size - int(H*0.006), by + int(H*0.006), icon_size, icon_size)
+                pygame.draw.rect(surf, (30, 30, 30), icon_rect)
+                pygame.draw.rect(surf, WHITE, icon_rect, 1)
+                if skill:
+                    spr_path = skill.get("sprite", "")
+                    img = self._skill_icon_cache.get(spr_path)
+                    if img is None and spr_path and os.path.exists(spr_path):
+                        try:
+                            raw = pygame.image.load(spr_path).convert_alpha()
+                            img = pygame.transform.smoothscale(raw, (icon_size, icon_size))
+                            self._skill_icon_cache[spr_path] = img
+                        except Exception:
+                            img = None
+                    if img:
+                        surf.blit(img, icon_rect)
+
+        # ── 펼치기/접기 버튼 (첫 박스 오른쪽) ────────────────────
+        btn_w = int(W * 0.025)
+        btn_h = box_h
+        btn_x = margin_x + box_w + int(W * 0.004)
+        btn_y = margin_y
+        btn = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+        s = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
+        s.fill((40, 40, 40, 180))
+        surf.blit(s, (btn_x, btn_y))
+        pygame.draw.rect(surf, (200, 200, 200), btn, 2)
+        arrow = "▲" if self.order_expanded else "▼"
+        draw_text(surf, arrow, self.fonts["menu"], WHITE, btn.centerx, btn.centery)
+        self._order_btn_rect = btn
 
     def _draw_inspect_overlay(self, c):
         """적/아군 공통 열람 오버레이"""
@@ -731,7 +1268,10 @@ class BattleScreen:
                     name_y  = ty + int(icon_size * 0.2)
                     tags_str = "  |  ".join(f"'{t}'" for t in skill["tags"]) if skill["tags"] else ""
                     hits_str = f"  |  {skill['hits']}회" if skill["hits"] > 1 else ""
-                    elements = f"위력 {skill['power']}  |  {skill['type']}  |  {skill['target']}{hits_str}"
+                    side  = skill.get("side", skill.get("target", ""))
+                    count = skill.get("count", "")
+                    target_str = f"{side} {count}".strip()
+                    elements = f"위력 {skill['power']}  |  {skill['type']}  |  {target_str}{hits_str}"
                     if tags_str:
                         elements += f"  |  {tags_str}"
                     if content_rect.top <= name_y <= content_rect.bottom:
