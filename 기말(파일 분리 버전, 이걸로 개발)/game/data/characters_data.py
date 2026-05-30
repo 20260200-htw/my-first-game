@@ -7,6 +7,7 @@ ENEMY_DEFS = {
         "phys_level":    100,
         "magic_level":   100,
         "hp_max":        10000,
+        "mp_max":        10000,
         "sprite":        "assets/KL_battle.png",
         "profile":       "assets/KL_profile.png",
         "sprite_scale":  0.3,
@@ -38,21 +39,24 @@ ENEMY_DEFS = {
                 "desc": [
                     "모든 피해로부터 받는 피해가 30% 감소합니다.",
                     "자신이 적에게 가하는 모든 피해가 50% 증가합니다.",
-                ]
+                ],
+                "effects": [{"kind": "take_mult", "value": 0.7}, {"kind": "deal_mult", "value": 1.5}]
             },
             {
                 "name": "기사단장의 명령",
                 "desc": [
                     "이번 전투에서 왕국 기사단이 참전하지 않습니다.",
                     "또한 벨라가 '시험' 을 얻습니다. 자신이 사용하는 모든 스킬의 최종 위력이 50 감소합니다.",
-                ]
+                ],
+                "effects": [{"kind": "power_add", "value": -50}]
             },
             {
                 "name": "마력 발산 - 지옥불",
                 "desc": [
                     "'마력 발산' 상태가 되면 모든 스킬의 최종 위력이 50 증가합니다.",
                     "매 턴이 시작될 때마다 (물리 레벨+마법 레벨)*1 만큼 모든 적에게 마법 피해를 입힙니다.",
-                ]
+                ],
+                "effects": [{"kind": "power_add", "value": 50}]
             },
             {
                 "name": "지옥불 결계",
@@ -125,6 +129,7 @@ ENEMY_DEFS = {
                 "hits":   1,
                 "tags":   ["필중"],
                 "sprite": "assets/KL_skills_1.png",
+                "motion": "stationary",
                 "desc": [
                     "반드시 주인공을 대상으로 지정함",
                     "대상이 수비 스킬 '방어' 를 사용하였다면 피해량 -50%",
@@ -138,6 +143,7 @@ ENEMY_DEFS = {
                 "hits":   1,
                 "tags":   ["필중"],
                 "sprite": "assets/KL_skills_2.png",
+                "motion": "stationary",
                 "desc": [
                     "반드시 주인공을 대상으로 지정함",
                     "대상이 수비 스킬 '방어' 를 사용하였다면 피해량 +500%",
@@ -152,6 +158,7 @@ ENEMY_DEFS = {
                 "hits":   1,
                 "tags":   ["난사"],
                 "sprite": "assets/KL_skills_3.png",
+                "motion": "cast",
                 "desc": [
                     "수비 스킬 '방어' 를 사용한 대상에게는 피해량 -90%",
                     "수비 스킬 '회피' 를 사용한 대상에게는 '필중' 효과가 함께 적용됨",
@@ -165,6 +172,7 @@ ENEMY_DEFS = {
                 "hits":   1,
                 "tags":   ["필중"],
                 "sprite": "assets/KL_skills_4.png",
+                "motion": "stationary",
                 "desc": [
                     "주인공을 제외한 적을 대상으로 지정함",
                     "대상이 '보호막' 을 가지고 있다면 피해를 입히기 전 보호막을 전부 파괴함",
@@ -178,6 +186,7 @@ ENEMY_DEFS = {
                 "hits":   3,
                 "tags":   [],
                 "sprite": "assets/KL_skills_5.png",
+                "motion": "cast",
                 "desc": [
                     "반드시 주인공을 대상으로 지정함",
                     "대상이 이 스킬로 피해를 받기 전 자신을 공격했다면 해당 스킬을 취소함",
@@ -208,7 +217,7 @@ ENEMY_DEFS = {
         ],
         "speed": 0,
         "skills": [
-            {"name": "찌르기", "power": 20, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "찌르기", "power": 20, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
              "sprite": "", "desc": ["창으로 찌른다."]},
         ],
     },
@@ -235,7 +244,7 @@ ENEMY_DEFS = {
         "background":    "assets/battle_bg_forest.png",  # 배경 스프라이트
         "speed_min": 2, "speed_max": 6,
         "skills": [
-            {"name": "박치기", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "박치기", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
              "sprite": "", "desc": ["몸으로 부딪힌다."]},
         ],
     },
@@ -261,7 +270,7 @@ ENEMY_DEFS = {
         "click_w_ratio": 0.2,
         "speed_min": 2, "speed_max": 6,
         "skills": [
-            {"name": "산성 침", "power": 20, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "산성 침", "power": 20, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "cast",
              "sprite": "", "desc": ["산성 액체를 뱉는다."]},
         ],
     },
@@ -287,7 +296,7 @@ ENEMY_DEFS = {
         "click_w_ratio": 0.2,
         "speed_min": 1, "speed_max": 3,
         "skills": [
-            {"name": "변형 강타", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "변형 강타", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "stationary",
              "sprite": "", "desc": ["변형한 팔로 내려친다."]},
         ],
     },
@@ -321,15 +330,16 @@ ALLY_DEFS = {
         "phys_level":    10,
         "magic_level":   10,
         "hp_max":        100,
+        "mp_max":        500,
         "sprite":        "assets/main_character_B.png",
         "profile":       "assets/main_profile.png",
         "sprite_scale":  0.25,
         "click_w_ratio": 0.2,
         "speed":         5,
         "skills": [
-            {"name": "휘두르기", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "휘두르기", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
              "sprite": "", "desc": ["기본적인 물리 공격."]},
-            {"name": "마력탄", "power": 25, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "마력탄", "power": 25, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "cast",
              "sprite": "", "desc": ["기본적인 마법 공격."]},
         ],
     },
@@ -340,6 +350,7 @@ ALLY_DEFS = {
         "phys_level":    85,
         "magic_level":   82,
         "hp_max":        3920,
+        "mp_max":        3000,
         "sprite":        "assets/SHM_battle.png",
         "profile":       "assets/SHM_profile.png",
         "sprite_scale":  0.3,
@@ -362,7 +373,8 @@ ALLY_DEFS = {
                 "desc": [
                     "모든 피해로부터 받는 피해가 10% 감소합니다.",
                     "자신과 아군에게 가하는 회복 효과가 50% 증가합니다.",
-                ]
+                ],
+                "effects": [{"kind": "take_mult", "value": 0.9}]
             },
             {
                 "name": "황금 빛으로 빛나는",
@@ -395,11 +407,11 @@ ALLY_DEFS = {
         ],
         "speed_min": 8, "speed_max": 12,
         "skills": [
-            {"name": "성스러운 빛", "power": 60, "type": "마법", "side": "아군", "count": "단일", "hits": 1, "tags": ["회복", "지원"],
+            {"name": "성스러운 빛", "power": 60, "type": "마법", "side": "아군", "count": "단일", "hits": 1, "tags": ["회복", "지원"], "motion": "command",
              "sprite": "", "desc": ["아군 하나를 회복한다."]},
-            {"name": "심판의 일격", "power": 90, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "심판의 일격", "power": 90, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "stationary",
              "sprite": "", "desc": ["적에게 물리 피해를 입힌다."]},
-            {"name": "축복", "power": 40, "type": "마법", "side": "아군", "count": "5인", "hits": 1, "tags": ["회복", "지원"],
+            {"name": "축복", "power": 40, "type": "마법", "side": "아군", "count": "5인", "hits": 1, "tags": ["회복", "지원"], "motion": "command",
              "sprite": "", "desc": ["아군 전체를 회복한다."]},
         ]
     },
@@ -410,6 +422,7 @@ ALLY_DEFS = {
         "phys_level":    87,
         "magic_level":   63,
         "hp_max":        3130,
+        "mp_max":        1000,
         "sprite":        "assets/SFG_battle.png",
         "profile":       "assets/SFG_profile.png",
         "sprite_scale":  0.25,
@@ -431,7 +444,8 @@ ALLY_DEFS = {
                 "desc": [
                     "모든 피해로부터 받는 피해가 10% 감소합니다.",
                     "자신이 적에게 가하는 모든 피해가 10% 증가합니다.",
-                ]
+                ],
+                "effects": [{"kind": "take_mult", "value": 0.9}, {"kind": "deal_mult", "value": 1.1}]
             },
             {
                 "name": "집착에 가까운 단련",
@@ -462,11 +476,11 @@ ALLY_DEFS = {
         ],
         "speed_min": 13, "speed_max": 17,
         "skills": [
-            {"name": "금강", "power": 70, "type": "마법", "side": "자신", "count": "단일", "hits": 1, "tags": ["지원"],
+            {"name": "금강", "power": 70, "type": "마법", "side": "자신", "count": "단일", "hits": 1, "tags": ["지원"], "motion": "command",
              "sprite": "", "desc": ["'금강' 상태가 된다."]},
-            {"name": "철권", "power": 100, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "철권", "power": 100, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "stationary",
              "sprite": "", "desc": ["강력한 물리 일격."]},
-            {"name": "연환격", "power": 35, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
+            {"name": "연환격", "power": 35, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [], "motion": "stationary",
              "sprite": "", "desc": ["3회 연속 공격."]},
         ]
     },
@@ -477,6 +491,7 @@ ALLY_DEFS = {
         "phys_level":    83,
         "magic_level":   88,
         "hp_max":        2780,
+        "mp_max":        5000,
         "sprite":        "assets/SSG_battle.png",
         "profile":       "assets/SSG_profile.png",
         "sprite_scale":  0.25,
@@ -498,7 +513,8 @@ ALLY_DEFS = {
                 "desc": [
                     "모든 피해로부터 받는 피해가 20% 감소합니다.",
                     "전투 지역이 엘 로마올라스라면 매 턴이 시작될 때마다 모든 아군이 전체 마력의 20%를 회복합니다.",
-                ]
+                ],
+                "effects": [{"kind": "take_mult", "value": 0.8}]
             },
             {
                 "name": "쾌검",
@@ -538,14 +554,17 @@ ALLY_DEFS = {
         ],
         "speed_min": 21, "speed_max": 33,
         "skills": [
-            {"name": "난무", "power": 10, "type": "물리", "side": "적", "count": "단일", "hits": 10, "tags": [],
+            {"name": "난무", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 4, "tags": [],
              "sprite": "", "motion": "stationary",
              "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/SSG_nanmu_target.png",
-             "desc": ["10회 연속 공격."]},
+             "desc": ["4회 연속 공격."]},
             {"name": "선장의 호령", "power": 35, "type": "마법", "side": "아군", "count": "5인", "hits": 1, "tags": ["지원"],
-             "sprite": "", "desc": ["아군 전체를 강화한다."]},
+             "sprite": "", "motion": "command",
+             "effect_self": "assets/SSG_command_self.png", "effect_target": "assets/SSG_command_target.png",
+             "desc": ["아군 전체를 강화한다."]},
             {"name": "쾌속 베기", "power": 50, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
-             "sprite": "", "desc": ["3회 연속 베기."]},
+             "sprite": "", "motion": "behind",
+             "desc": ["3회 연속 베기."]},
         ]
     },
     "막심 오그네프": {
@@ -555,6 +574,7 @@ ALLY_DEFS = {
         "phys_level":    89,
         "magic_level":   91,
         "hp_max":        4160,
+        "mp_max":        1000,
         "sprite":        "assets/super_snow_man.png",
         "profile":       "assets/maxim_profile.png",
         "sprite_scale":  0.5,
@@ -571,7 +591,8 @@ ALLY_DEFS = {
                 "desc": [
                     "자신이 적에게 가하는 모든 피해가 30% 증가합니다.",
                     "대상이 마물 혹은 마족이라면 추가 10% 증가합니다.",
-                ]
+                ],
+                "effects": [{"kind": "deal_mult", "value": 1.3}, {"kind": "deal_mult", "value": 1.1, "vs": ["마물", "마족"]}]
             },
             {
                 "name": "총공세",
@@ -616,11 +637,11 @@ ALLY_DEFS = {
         ],
         "speed": 1,
         "skills": [
-            {"name": "화염포", "power": 120, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "화염포", "power": 120, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "cast",
              "sprite": "", "desc": ["강력한 마법 일격."]},
-            {"name": "북부의 불길", "power": 60, "type": "마법", "side": "적", "count": "5인", "hits": 1, "tags": [],
+            {"name": "북부의 불길", "power": 60, "type": "마법", "side": "적", "count": "5인", "hits": 1, "tags": [], "motion": "cast",
              "sprite": "", "desc": ["적 전체에게 마법 피해."]},
-            {"name": "관통사격", "power": 90, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+            {"name": "관통사격", "power": 90, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
              "sprite": "", "desc": ["물리 관통 공격."]},
         ]
     },

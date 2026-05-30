@@ -14,6 +14,10 @@ class BattleLogic:
         self.log        = []
         self.battle_over = False
         self.winner      = None
+        # 계획 단계
+        self.phase      = "plan"   # "plan"(계획) / "exec"(실행)
+        self.plan_idx   = 0        # 계획 중인 아군 인덱스 (turn_order 기준)
+        self.planned    = {}       # {combatant: {"kind","skill","primary"}}
 
     # ── 진영 헬퍼 ─────────────────────────────────────────────
     def allies_of(self, actor):
@@ -95,10 +99,64 @@ class BattleLogic:
 
         self.log.append(f"── {self.turn_count}턴 시작 ──")
 
+        # 계획 단계 시작
+        self.phase   = "plan"
+        self.planned = {}
+        self.plan_idx = 0
+        self._advance_plan_to_ally()
+
+    # ── 계획 단계 ─────────────────────────────────────────────
+    def _advance_plan_to_ally(self):
+        """plan_idx를 다음 '살아있는 아군'으로 이동. 끝나면 실행 단계로."""
+        while self.plan_idx < len(self.turn_order):
+            c = self.turn_order[self.plan_idx]
+            if c in self.allies and c.hp > 0:
+                return
+            self.plan_idx += 1
+        # 아군 계획 모두 완료 → 실행 단계
+        self.phase = "exec"
+        self.order_idx = 0
+
+    def planning_actor(self):
+        """현재 계획 입력을 받을 아군 (없으면 None)"""
+        if self.phase != "plan":
+            return None
+        if self.plan_idx < len(self.turn_order):
+            return self.turn_order[self.plan_idx]
+        return None
+
+    def set_plan(self, actor, kind, skill=None, primary=None):
+        """아군 행동 계획 저장 후 다음 아군으로"""
+        self.planned[actor] = {"kind": kind, "skill": skill, "primary": primary}
+        self.plan_idx += 1
+        self._advance_plan_to_ally()
+
+    def reset_plan(self):
+        """계획 전체 리셋, 첫 아군부터 다시"""
+        self.planned = {}
+        self.plan_idx = 0
+        self.phase = "plan"
+        self._advance_plan_to_ally()
+
+    def is_planning_done(self):
+        return self.phase == "exec"
+
     def current_actor(self):
+        if self.phase != "exec":
+            return None
         if self.order_idx < len(self.turn_order):
             return self.turn_order[self.order_idx]
         return None
+
+    def planned_action_of(self, actor):
+        """실행 단계: 해당 actor의 예약 행동 (아군은 planned, 적은 planned_skill)"""
+        if actor in self.planned:
+            return self.planned[actor]
+        # 적: 미리 정해둔 스킬
+        sk = getattr(actor, "planned_skill", None)
+        if sk:
+            return {"kind": "skill", "skill": sk, "primary": None}
+        return {"kind": "skip"}
 
     def advance(self):
         if self.battle_over:
@@ -111,19 +169,22 @@ class BattleLogic:
         if self.order_idx >= len(self.turn_order):
             self._check_battle_over()
             if not self.battle_over:
-                self.start_turn()
+                self.start_turn()  # 다음 턴 → 다시 계획 단계
 
     # ── 행동: 스킬 사용 ───────────────────────────────────────
     def use_skill(self, actor, skill, primary_target=None):
         targets = self.resolve_targets(actor, skill, primary_target)
         if self.is_support(skill):
             self._apply_support(actor, skill, targets)
+            results = []
         else:
-            self._apply_attack(actor, skill, targets)
+            results = self._apply_attack(actor, skill, targets)
         self._check_battle_over()
+        return results
 
     def apply_single_hit(self, actor, skill, targets):
-        """1히트 분량의 피해만 적용 (모션 연동용)"""
+        """1히트 분량의 피해만 적용 (모션 연동용). 반환: [(target, amount), ...]"""
+        results = []
         for target in targets:
             if target.hp <= 0:
                 continue
@@ -132,14 +193,18 @@ class BattleLogic:
                 skill_power = actor.calc_skill_power(skill)
                 if dodge_power > skill_power and "필중" not in skill.get("tags", []):
                     self.log.append(f"{target.name} 회피!")
+                    results.append((target, 0))
                     continue
-            dmg = actor.calc_damage(skill)
+            dmg = actor.calc_damage(skill, target)
             applied = target.take_damage(dmg)
             self.log.append(f"{actor.name} → {target.name}: {skill['name']} ({applied})")
+            results.append((target, applied))
         self._check_battle_over()
+        return results
 
     def _apply_attack(self, actor, skill, targets):
         hits = skill.get("hits", 1)
+        results = []
         for target in targets:
             if target.hp <= 0:
                 continue
@@ -150,10 +215,12 @@ class BattleLogic:
                     skill_power = actor.calc_skill_power(skill)
                     if dodge_power > skill_power and "필중" not in skill.get("tags", []):
                         continue
-                dmg = actor.calc_damage(skill)
+                dmg = actor.calc_damage(skill, target)
                 applied = target.take_damage(dmg)
                 total += applied
             self.log.append(f"{actor.name} → {target.name}: {skill['name']} ({total})")
+            results.append((target, total))
+        return results
 
     def _apply_support(self, actor, skill, targets):
         # 회복 스킬: 위력 기반 회복, 그 외 지원은 로그만 (효과는 추후 패시브 연동)
