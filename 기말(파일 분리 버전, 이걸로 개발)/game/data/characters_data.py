@@ -385,6 +385,9 @@ ENEMY_DEFS = {
             {"name": "쾌속 베기", "power": 50, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
              "sprite": "", "motion": "behind",
              "desc": ["3회 연속 베기."]},
+             {"name": "파도 치는 검격", "power": 80, "type": "마법", "side": "적", "count": "2인", "hits": 3, "tags": [],
+             "sprite": "", "motion": "cast",
+             "desc": ["3회 연속 베기."]},
              {"name": "대양의 마법", "power": 30, "type": "마법", "side": "적", "count": "5인", "hits": 3, "tags": [],
              "sprite": "", "motion": "cast", "split": 20, #cast 모션도 split 변수로 횟수 나눠서 공격 가능하고, hit로 여러번 공격 가능하게
              "desc": ["파도를 부르는 마법이다."]},

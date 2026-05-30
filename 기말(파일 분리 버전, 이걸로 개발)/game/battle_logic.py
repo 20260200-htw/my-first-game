@@ -56,7 +56,7 @@ class BattleLogic:
             return [random.choice(pool)]
 
         # 3인 / 5인: 1명 지정 + 나머지 랜덤
-        n = 3 if count == "3인" else 5
+        n = int(count.replace("인", ""))
         n = min(n, len(pool))
         chosen = []
         if primary_target and primary_target in pool:
