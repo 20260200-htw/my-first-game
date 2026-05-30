@@ -182,8 +182,9 @@ class BattleLogic:
         self._check_battle_over()
         return results
 
-    def apply_single_hit(self, actor, skill, targets):
-        """1히트 분량의 피해만 적용 (모션 연동용). 반환: [(target, amount), ...]"""
+    def apply_single_hit(self, actor, skill, targets, fraction=1.0):
+        """1히트 분량의 피해 적용 (모션 연동용). 반환: [(target, amount), ...]
+        fraction: 1히트 피해에 곱할 비율 (난무 등 분할 타격 시 1/N 전달)"""
         results = []
         for target in targets:
             if target.hp <= 0:
@@ -195,7 +196,7 @@ class BattleLogic:
                     self.log.append(f"{target.name} 회피!")
                     results.append((target, 0))
                     continue
-            dmg = actor.calc_damage(skill, target)
+            dmg = actor.calc_damage(skill, target) * fraction
             applied = target.take_damage(dmg)
             self.log.append(f"{actor.name} → {target.name}: {skill['name']} ({applied})")
             results.append((target, applied))

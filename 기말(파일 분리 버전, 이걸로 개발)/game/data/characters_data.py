@@ -300,6 +300,166 @@ ENEMY_DEFS = {
              "sprite": "", "desc": ["변형한 팔로 내려친다."]},
         ],
     },
+    "보스 마리": {
+        "name":          "마리",
+        "type":          "boss",
+        "level":         87,
+        "phys_level":    83,
+        "magic_level":   88,
+        "hp_max":        2780,
+        "mp_max":        5000,
+        "sprite":        "assets/SSG_battle.png",
+        "profile":       "assets/SSG_profile.png",
+        "floor":    "assets/SSG_battle_F.png.png",  # 바닥 스프라이트
+        "background":    "assets/SSG_battle_BG.png",  # 배경 스프라이트
+        "bgm":           "assets/SSG_battle_bgm.mp3", # 배경음악
+        "sprite_scale":  0.25,
+        "click_w_ratio": 0.2,
+        "overview": [
+            "마리 솔",
+            "",
+            "그녀는 남부의 신호입니다.",
+            "해적이지만 악인보다는 선인에 가까운 자입니다.",
+            "",
+            "남부는 수 많은 섬으로 이루어진 구역이기 때문에",
+            "그녀는 남부 섬들 간의 교류와 마물의 토벌을 책임지고 있습니다.",
+            "",
+            "해적이긴 하지만요.",
+        ],
+        "passives": [
+            {
+                "name": "엘 로마올라스의 선장",
+                "desc": [
+                    "모든 피해로부터 받는 피해가 20% 감소합니다.",
+                    "전투 지역이 엘 로마올라스라면 매 턴이 시작될 때마다 모든 아군이 전체 마력의 20%를 회복합니다.",
+                ],
+                "effects": [{"kind": "take_mult", "value": 0.8}]
+            },
+            {
+                "name": "쾌검",
+                "desc": [
+                    "공격 횟수가 3 이상인 모든 스킬의 피해량이 30% 증가합니다.",
+                    "만약 이전 턴에 회피에 성공했다면 공격 횟수가 3 이상인 모든 스킬의 최종 위력이 10 증가합니다.",
+                ]
+            },
+            {
+                "name": "마력 발산 - 선장",
+                "desc": [
+                    "'마력 발산' 상태가 되면 모든 지원 스킬의 최종 위력이 25 증가합니다.",
+                    "또한 공격 횟수가 3 이상인 모든 스킬의 공격 횟수가 1 증가하며, 피해량이 10% 증가합니다.",
+                    "'엘 로마올라스의 선장' 이 활성화되어 있다면",
+                    "매 턴이 시작될 때마다 모든 아군에게 최대 체력의 10%의 보호막을 부여합니다.",
+                ]
+            },
+            {
+                "name": "사기 증진",
+                "desc": [
+                    "자신 또는 아군에게 지원 스킬을 사용하면 이번 턴 동안 모든 아군의 최종 위력이 10 증가합니다.",
+                ]
+            },
+            {
+                "name": "승선",
+                "desc": [
+                    "자신의 체력이 최대 체력의 70% 이하로 내려갔다면 다음 턴이 시작될 때 보호막을 2000 얻습니다.",
+                ]
+            },
+            {
+                "name": "남부의 신호",
+                "desc": [
+                    "아군에게 지원 스킬을 사용하면 해당 아군에게 '선원' 중첩을 1 부여합니다.",
+                    "'선원': 중첩 당 최종 위력이 1 증가합니다. 최대 10회 중첩 가능합니다.",
+                ]
+            },
+        ],
+        "speed_min": 21, "speed_max": 33,
+        "skills": [
+            {"name": "난무", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 5, "tags": [],
+             "sprite": "", "motion": "stationary", "split": 3,
+             "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/SSG_nanmu_target.png",
+             "sound": "assets/SSG_nanmu.mp3",
+             "desc": ["무자비한 기세로 적을 벤다."]},
+            {"name": "선장의 호령", "power": 35, "type": "마법", "side": "아군", "count": "5인", "hits": 1, "tags": ["지원"],
+             "sprite": "", "motion": "command",
+             "effect_self": "assets/SSG_command_self.png", "effect_target": "assets/SSG_command_target.png",
+             "desc": ["아군 전체를 강화한다."]},
+            {"name": "쾌속 베기", "power": 50, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
+             "sprite": "", "motion": "behind",
+             "desc": ["3회 연속 베기."]},
+             {"name": "대양의 마법", "power": 100, "type": "마법", "side": "적", "count": "5인", "hits": 1, "tags": [],
+             "sprite": "", "motion": "cast", "split": 5, #cast 모션도 split 변수로 횟수 나눠서 공격 가능하고, hit로 여러번 공격 가능하게
+             "desc": ["파도를 부르는 마법이다."]},
+        ]    
+    },
+    "마리 따까리1": {
+        "name":          "칼 든 선원",
+        "type":          "normal",
+        "level":         41,
+        "phys_level":    35,
+        "magic_level":   21,
+        "hp_max":        320,
+        "mp_max":        290,
+        "sprite":        "assets/SSG_extra_1.png",
+        "profile":       "assets/SSG_extra_1_profile.png",
+        "sprite_scale":  0.55,
+        "click_w_ratio": 0.2,
+        "overview": [
+            "엘 로마올라스 선원",
+            "",
+            "해적선 엘 로마올라스의 선원입니다.",
+            "남부의 신호, 마리 솔의 부하들 중 하나입니다.",
+        ],
+        "passives": [
+            {
+                "name": "엘 로마올라스의 선원",
+                "desc": [
+                    "모든 피해로부터 받는 피해가 5% 감소합니다.",
+                ],
+                "effects": [{"kind": "take_mult", "value": 0.95}]
+            },
+        ],
+        "speed_min": 1, "speed_max": 5,
+        "skills": [
+            {"name": "엉성한 난무", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
+             "sprite": "", "motion": "stationary", "split": 2,
+             "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/SSG_nanmu_target.png",
+             "sound": "assets/SSG_nanmu.mp3", "desc": ["선장에게 배운 기술이다."]},
+        ],
+    },
+    "마리 따까리2": {
+        "name":          "총 든 선원",
+        "type":          "normal",
+        "level":         42,
+        "phys_level":    36,
+        "magic_level":   20,
+        "hp_max":        210,
+        "mp_max":        300,
+        "sprite":        "assets/SSG_extra_2.png",
+        "profile":       "assets/SSG_extra_2_profile.png",
+        "sprite_scale":  0.55,
+        "click_w_ratio": 0.2,
+        "overview": [
+            "엘 로마올라스 선원",
+            "",
+            "해적선 엘 로마올라스의 선원입니다.",
+            "남부의 신호, 마리 솔의 부하들 중 하나입니다.",
+        ],
+        "passives": [
+            {
+                "name": "엘 로마올라스의 선원",
+                "desc": [
+                    "모든 피해로부터 받는 피해가 5% 감소합니다.",
+                ],
+                "effects": [{"kind": "take_mult", "value": 0.95}]
+            },
+        ],
+        "speed_min": 9, "speed_max": 10,
+        "skills": [
+            {"name": "보조 사격", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "motion": "cast",
+             "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/gun_shot_target.png",
+             "sound": "assets/gun_shot.mp3", "desc": ["총을 쏜다. 비겁하다."]},
+        ]  
+    },
     "template": { #호출명
         "title":         "", #이명, 보스 전용
         "name":          "템플릿", #이름
@@ -327,9 +487,9 @@ ALLY_DEFS = {
         "name":          "주인공",
         "type":          "player",
         "level":         10,
-        "phys_level":    10,
-        "magic_level":   10,
-        "hp_max":        100,
+        "phys_level":    50,
+        "magic_level":   50,
+        "hp_max":        2000,
         "mp_max":        500,
         "sprite":        "assets/main_character_B.png",
         "profile":       "assets/main_profile.png",
@@ -407,7 +567,7 @@ ALLY_DEFS = {
         ],
         "speed_min": 8, "speed_max": 12,
         "skills": [
-            {"name": "성스러운 빛", "power": 60, "type": "마법", "side": "아군", "count": "단일", "hits": 1, "tags": ["회복", "지원"], "motion": "command",
+            {"name": "성스러운 빛", "power": 300, "type": "마법", "side": "아군", "count": "단일", "hits": 1, "tags": ["회복", "지원"], "motion": "command",
              "sprite": "", "desc": ["아군 하나를 회복한다."]},
             {"name": "심판의 일격", "power": 90, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "stationary",
              "sprite": "", "desc": ["적에게 물리 피해를 입힌다."]},
@@ -555,8 +715,9 @@ ALLY_DEFS = {
         "speed_min": 21, "speed_max": 33,
         "skills": [
             {"name": "난무", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 4, "tags": [],
-             "sprite": "", "motion": "stationary",
+             "sprite": "", "motion": "stationary", "split": 3,
              "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/SSG_nanmu_target.png",
+             "sound": "assets/SSG_nanmu.mp3",
              "desc": ["4회 연속 공격."]},
             {"name": "선장의 호령", "power": 35, "type": "마법", "side": "아군", "count": "5인", "hits": 1, "tags": ["지원"],
              "sprite": "", "motion": "command",
