@@ -83,6 +83,36 @@ class BattleDrawMixin:
                     cdx = 0
                     cdy = 0
                 cmd_cam = (cdx, cdy, z)
+            elif self.anim["type"] == "cast":
+                # 시전자 줌인 → 대상으로 카메라 이동 → 대상에서 타격
+                a = self.anim
+                ph = a["phase"]
+                up = int(H * 0.13)
+                # 대상(primary) 위치
+                prim = a["primary"]
+                if prim in self.enemies:
+                    pi = self.enemies.index(prim); tx, ty = self._enemy_positions()[pi]
+                elif prim in self.allies:
+                    pi = self.allies.index(prim); tx, ty = self._ally_positions()[pi]
+                else:
+                    tx, ty = ax, ay
+                if ph == "zoom_in":
+                    # 룰렛에서 이미 시전자에게 확대된 상태 → 그대로 유지 (줌아웃 방지)
+                    z = 1.4
+                    cdx = (ax - W / 2)
+                    cdy = (ay - H / 2) - up
+                elif ph == "move":
+                    p = min(1.0, a["timer"] / self.CAST_MOVE)
+                    z = 1.4
+                    sx_ = (ax - W / 2);  sy_ = (ay - H / 2) - up
+                    ex_ = (tx - W / 2);  ey_ = (ty - H / 2) - up
+                    cdx = sx_ + (ex_ - sx_) * p
+                    cdy = sy_ + (ey_ - sy_) * p
+                else:  # hit / finish : 대상에 고정
+                    z = 1.4
+                    cdx = (tx - W / 2)
+                    cdy = (ty - H / 2) - up
+                cmd_cam = (cdx, cdy, z)
             else:
                 ox, oy = self._anim_actor_offset(self.anim["actor"])
                 ax += ox; ay += oy
@@ -146,8 +176,23 @@ class BattleDrawMixin:
 
         zoom = eff_zoom
 
-        # 스프라이트 캐시 갱신 (줌 변경 시에만)
-        if self._cache_zoom != zoom:
+        # 스프라이트/배경/바닥 캐시 갱신 (줌이 의미 있게 바뀔 때만)
+        zq = round(zoom, 2)
+        if self._cache_zoom != zq:
+            # 배경 캐시
+            if self.background:
+                bw, bh = self.background.get_size()
+                self._bg_cache = pygame.transform.smoothscale(
+                    self.background, (max(1, int(bw * zoom)), max(1, int(bh * zoom))))
+            else:
+                self._bg_cache = None
+            # 바닥 캐시
+            if self.floor:
+                fw, fh = self.floor.get_size()
+                self._floor_cache = pygame.transform.smoothscale(
+                    self.floor, (max(1, int(fw * zoom)), max(1, int(fh * zoom))))
+            else:
+                self._floor_cache = None
             self._enemy_cache = []
             for i, e in enumerate(self.enemies):
                 if e.sprite_orig and e.sprite:
@@ -157,7 +202,7 @@ class BattleDrawMixin:
                         target_w = target_w // 2
                         target_h = target_h // 2
                     self._enemy_cache.append(
-                        pygame.transform.smoothscale(e.sprite_orig, (target_w, target_h))
+                        pygame.transform.smoothscale(e.sprite_orig, (max(1, target_w), max(1, target_h)))
                     )
                 else:
                     self._enemy_cache.append(None)
@@ -168,11 +213,11 @@ class BattleDrawMixin:
                     target_h = int(a.sprite.get_height() * zoom)
                     orig_flip = pygame.transform.flip(a.sprite_orig, True, False)
                     self._ally_cache.append(
-                        pygame.transform.smoothscale(orig_flip, (target_w, target_h))
+                        pygame.transform.smoothscale(orig_flip, (max(1, target_w), max(1, target_h)))
                     )
                 else:
                     self._ally_cache.append(None)
-            self._cache_zoom = zoom
+            self._cache_zoom = zq
 
         # 화면 → 줌/카메라 적용 좌표 변환
         def to_sx(wx): return int((wx - W / 2 - eff_cam_x) * zoom + W / 2)
@@ -180,26 +225,22 @@ class BattleDrawMixin:
 
         # ── 배경 (125% 크기로 로드됨, 줌 1.0 = 화면 꽉 채움) ───
         surf.fill((0, 0, 0))
-        if self.background:
-            bw, bh = self.background.get_size()
-            draw_w = int(bw * zoom)
-            draw_h = int(bh * zoom)
-            scaled_bg = pygame.transform.smoothscale(self.background, (draw_w, draw_h))
+        if self._bg_cache is not None:
+            draw_w, draw_h = self._bg_cache.get_size()
             bx = int(W / 2 - draw_w / 2 - eff_cam_x * zoom)
             by = int(H / 2 - draw_h / 2 - eff_cam_y * zoom)
-            surf.blit(scaled_bg, (bx, by))
+            surf.blit(self._bg_cache, (bx, by))
         else:
             surf.fill(WHITE)
 
-        # ── 바닥 ──────────────────────────────────────────────────
-        if self.floor:
-            fw, fh = self.floor.get_size()
-            draw_w = int(fw * zoom)
-            draw_h = int(fh * zoom)
-            scaled_floor = pygame.transform.smoothscale(self.floor, (draw_w, draw_h))
+        # ── 바닥 (윗면을 캐릭터 발밑 라인 H*0.60 에 맞춤) ─────────
+        if self._floor_cache is not None:
+            draw_w, draw_h = self._floor_cache.get_size()
             fx = int(W / 2 - draw_w / 2 - eff_cam_x * zoom)
-            fy = int(H / 2 - draw_h / 2 - eff_cam_y * zoom)
-            surf.blit(scaled_floor, (fx, fy))
+            # 캐릭터 발밑(world y = H*0.60) 에 바닥 윗면을 정렬
+            FLOOR_TOP_RATIO = 0.60   # 캐릭터 기준점과 동일 (필요시 미세조정)
+            fy = to_sy(int(H * FLOOR_TOP_RATIO))
+            surf.blit(self._floor_cache, (fx, fy))
 
         # ── 적 ────────────────────────────────────────────────────
         enemy_pos = self._enemy_positions()
@@ -269,6 +310,9 @@ class BattleDrawMixin:
             fill = int(bw * a.hp / a.hp_max)
             pygame.draw.rect(surf, GREEN, (bx, by, fill, bh))
             pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
+
+        # ── 비네팅 (캐릭터까지 덮고, 이 아래의 UI에는 적용 안 됨) ──
+        surf.blit(self._vignette, (0, 0))
 
         # ── 행동 메뉴 UI ──────────────────────────────────────────
         show_ui = self.state in (self.STATE_MENU, self.STATE_SKILL, self.STATE_TARGET)
@@ -429,9 +473,6 @@ class BattleDrawMixin:
         # ── 위력 룰렛 (레터박스 위 레이어, 모션 중에도 유지) ─────
         if self.state in (self.STATE_ROLL, self.STATE_ANIM) and self.roll:
             self._draw_roll(to_sx, to_sy)
-
-        # ── 비네팅 ───────────────────────────────────────────────
-        surf.blit(self._vignette, (0, 0))
 
         # ── 열람 오버레이 ─────────────────────────────────────────
         c = self._inspect_target()

@@ -131,6 +131,9 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self._cache_zoom = None
         self._enemy_cache = []
         self._ally_cache  = []
+        self._bg_cache    = None
+        self._floor_cache = None
+        self._last_zoom   = None
 
         # ── 비네팅 캐시 (한 번만 생성) ───────────────────────────
         vignette = pygame.Surface((W, H), pygame.SRCALPHA)
@@ -151,6 +154,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self._vignette = vignette
         self._skill_icon_cache = {}
         self._sound_cache = {}      # 스킬 효과음 캐시
+        self._effect_img_cache = {} # 이펙트 이미지 캐시
         self.order_expanded = False  # 행동 서열 펼치기
         self._disp_cam_x = 0.0
         self._disp_cam_y = 0.0
@@ -173,6 +177,10 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self.roll = None   # {actor,skill,primary,targets,timer,final_power,display}
         self._lb_ratio = 0.0   # 레터박스 펼침 비율 (실행 페이즈 동안 1 유지)
         self.anim_actor_offset = {}  # {combatant: (dx, dy)} 모션 중 위치 보정
+
+        # 첫 룰렛 렉 방지: 모든 스킬 리소스 미리 로드
+        self.preload_skill_assets()
+
     def _ui_rect(self):
         W, H = self.W, self.H
         ui_h = int(H * self.UI_H_RATIO) - int(H * 0.02)
@@ -430,18 +438,20 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                 self.order_expanded = not self.order_expanded
                 return None
             on_ui = ui.collidepoint(mx, my) or (self.state in (self.STATE_TARGET, self.STATE_SKILL) and tr.collidepoint(mx, my))
-            # 적 스프라이트 클릭
-            for i in range(len(self.enemies)):
-                r = self._enemy_sprite_rect(i)
-                if r and r.collidepoint(mx, my):
-                    self._open_inspect(self.enemies[i])
-                    return None
-            # 아군 스프라이트 클릭
-            for i in range(len(self.allies)):
-                r = self._ally_sprite_rect(i)
-                if r and r.collidepoint(mx, my):
-                    self._open_inspect(self.allies[i])
-                    return None
+            # 스프라이트 클릭(정보 열람)은 UI 영역이 아닐 때만 (UI가 위 레이어)
+            if not on_ui:
+                # 적 스프라이트 클릭
+                for i in range(len(self.enemies)):
+                    r = self._enemy_sprite_rect(i)
+                    if r and r.collidepoint(mx, my):
+                        self._open_inspect(self.enemies[i])
+                        return None
+                # 아군 스프라이트 클릭
+                for i in range(len(self.allies)):
+                    r = self._ally_sprite_rect(i)
+                    if r and r.collidepoint(mx, my):
+                        self._open_inspect(self.allies[i])
+                        return None
             if self.state == self.STATE_MENU and ui.collidepoint(mx, my):
                 item_h = ui.height // (len(self.UI_ITEMS) + 1)
                 for i in range(len(self.UI_ITEMS)):
@@ -645,6 +655,8 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             self.anim["elapsed"] = self.anim.get("elapsed", 0) + dt
             if self.anim["type"] == "command":
                 self._update_command(dt)
+            elif self.anim["type"] == "cast":
+                self._update_cast(dt)
             else:
                 self._update_melee_rush(dt)
 

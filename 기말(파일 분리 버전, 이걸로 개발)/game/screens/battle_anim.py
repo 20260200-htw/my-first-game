@@ -25,12 +25,33 @@ class BattleAnimMixin:
         motion = skill.get("motion")
         if motion in ("stationary", "behind"):
             self._start_melee_rush(actor, skill, primary, targets)
-        elif motion in ("command", "cast"):
-            self._start_command(actor, skill, primary, targets)
+        elif motion in ("cast", "command"):
+            # 지원 스킬(command)도 cast 와 동일한 연출 사용
+            self._start_cast(actor, skill, primary, targets)
         else:
             self.state = self.STATE_ENEMY
             self.enemy_timer = 0.0
             self._exec_pending = (actor, skill, primary)
+    def _start_cast(self, actor, skill, primary, targets):
+        """cast 연출 시작: 시전자 줌인 → 대상으로 이동 → 다단 타격"""
+        self._start_total(actor)
+        hits  = skill.get("hits", 1)
+        split = skill.get("split", 1)
+        self.anim = {
+            "type":    "cast",
+            "actor":   actor,
+            "skill":   skill,
+            "primary": primary,
+            "targets": targets,
+            "hits":    hits * split,     # 총 타격 횟수
+            "fraction": 1.0 / split,     # 각 타격 피해 비율
+            "hit_done": 0,
+            "phase":   "zoom_in",        # zoom_in → move → hit → finish
+            "timer":   0.0,
+        }
+        self.state = self.STATE_ANIM
+        self._anim_cam_start = (self.cam_x, self.cam_y, self.zoom)
+
     def _start_command(self, actor, skill, primary, targets):
         """선장의 호령 연출 시작"""
         self._start_total(actor)
@@ -151,6 +172,60 @@ class BattleAnimMixin:
     ANIM_CMD_HOLD = 250  # 확대 상태 정지
     ANIM_CMD_OUT  = 100  # 카메라 축소
     ANIM_CMD_END  = 1000  # 종료 대기
+    CAST_ZOOM_IN = 400   # 시전자 줌인
+    CAST_MOVE    = 350   # 시전자 → 대상 카메라 이동
+    CAST_HIT     = 120   # 타격 1회 시간
+    CAST_GAP     = 80    # 타격 간 간격
+    CAST_END     = 1000  # 종료 대기
+
+    def _update_cast(self, dt):
+        a = self.anim
+        a["timer"] += dt
+        phase = a["phase"]
+
+        if phase == "zoom_in":
+            # 시전자에게 이펙트 1회
+            if not a.get("self_fx"):
+                self._play_one_effect(a["skill"].get("effect_self", ""), a["actor"])
+                a["self_fx"] = True
+            if a["timer"] >= self.CAST_ZOOM_IN:
+                a["phase"] = "move"; a["timer"] = 0.0
+        elif phase == "move":
+            # 카메라가 대상으로 이동 (위치 보간은 draw에서). 도착 시 대상 이펙트
+            if a["timer"] >= self.CAST_MOVE:
+                self._play_one_effect(a["skill"].get("effect_target", ""), a["primary"])
+                a["phase"] = "hit"; a["timer"] = 0.0
+        elif phase == "hit":
+            # 타격 시점(타이밍 절반)에 1회 분량 피해 + 이펙트 + 쉐이크
+            if not a.get("hit_applied") and a["timer"] >= self.CAST_HIT * 0.5:
+                # 지원/회복 스킬은 use_skill(회복·버프), 공격 스킬은 분할 피해
+                if self.logic.is_support(a["skill"]):
+                    _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"])
+                else:
+                    _res = self.logic.apply_single_hit(a["actor"], a["skill"], a["targets"], a.get("fraction", 1.0))
+                    self.shake_timer = 100
+                    self.shake_mag = int(self.H * 0.01)
+                self._play_skill_sound(a["skill"])
+                self._register_damage(_res)
+                for t in a["targets"]:
+                    self._play_one_effect(a["skill"].get("effect_target", ""), t)
+                a["hit_applied"] = True
+                a["hit_done"] += 1
+            if a["timer"] >= self.CAST_HIT + self.CAST_GAP:
+                a["hit_applied"] = False
+                if a["hit_done"] >= a["hits"] or self.logic.battle_over:
+                    a["phase"] = "finish"; a["timer"] = 0.0
+                else:
+                    a["timer"] = 0.0   # 다음 타격
+        elif phase == "finish":
+            if a["timer"] >= self.CAST_END:
+                self.anim = None
+                self.effects = []
+                self._clear_total()
+                self.roll = None
+                self.logic.advance()
+                self._sync_turn()
+
     def _update_command(self, dt):
         a = self.anim
         a["timer"] += dt
@@ -268,14 +343,46 @@ class BattleAnimMixin:
                 self.logic.advance()
                 self._sync_turn()
     def _load_effect_img(self, path):
-        if path and os.path.exists(path):
-            try:
-                raw = pygame.image.load(path).convert_alpha()
-                size = int(self.W * 0.12)
-                return pygame.transform.smoothscale(raw, (size, size))
-            except Exception:
-                return None
-        return None
+        if not path or not os.path.exists(path):
+            return None
+        cached = self._effect_img_cache.get(path)
+        if cached is not None:
+            return cached
+        try:
+            raw = pygame.image.load(path).convert_alpha()
+            size = int(self.W * 0.12)
+            img = pygame.transform.smoothscale(raw, (size, size))
+            self._effect_img_cache[path] = img
+            return img
+        except Exception:
+            return None
+
+    def preload_skill_assets(self):
+        """전투 시작 시 모든 스킬의 아이콘/이펙트/효과음을 미리 로드.
+        (첫 룰렛 프레임에서 디스크 로드가 몰려 끊기는 현상 방지)"""
+        full_h = int(self.H * 0.16)
+        icon_size = int(full_h * 0.8)
+        for c in (self.enemies + self.allies):
+            for sk in getattr(c, "skills", []):
+                # 룰렛 아이콘 (크기 키 동일하게)
+                sp = sk.get("sprite", "")
+                ckey = (sp, icon_size)
+                if sp and os.path.exists(sp) and ckey not in self._skill_icon_cache:
+                    try:
+                        raw = pygame.image.load(sp).convert_alpha()
+                        self._skill_icon_cache[ckey] = pygame.transform.smoothscale(raw, (icon_size, icon_size))
+                    except Exception:
+                        pass
+                # 이펙트 이미지
+                self._load_effect_img(sk.get("effect_self", ""))
+                self._load_effect_img(sk.get("effect_target", ""))
+                # 효과음
+                snd_path = sk.get("sound", "")
+                if snd_path and os.path.exists(snd_path) and snd_path not in self._sound_cache:
+                    try:
+                        self._sound_cache[snd_path] = pygame.mixer.Sound(snd_path)
+                    except Exception:
+                        pass
     def _play_skill_sound(self, skill):
         """스킬 효과음 재생 (skill["sound"] 경로). 없으면 무시."""
         path = skill.get("sound", "")
