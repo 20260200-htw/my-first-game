@@ -89,6 +89,11 @@ class BattleLogic:
         for c in combatants:
             c.defending = False
             c.dodging   = False
+            c.dodge_power = 0
+            c.shield = 0              # 방어 보호막: 그 턴만 유지
+            c.assist_shields = []     # 원호 보호막: 그 턴만 유지
+            c.tick_buffs()            # 버프 지속시간 감소 (획득 턴은 미포함)
+            c.on_turn_start(self)     # 턴 시작 패시브 (전황 분석 등)
 
         # 적 스킬 미리 결정 (행동 서열 표시용)
         for e in self.enemies:
@@ -116,6 +121,25 @@ class BattleLogic:
         # 아군 계획 모두 완료 → 실행 단계
         self.phase = "exec"
         self.order_idx = 0
+        self._reorder_for_exec()
+
+    def _is_defense_action(self, c):
+        """그 캐릭터의 예약 행동이 수비 스킬인지"""
+        act = self.planned.get(c)
+        if act and act.get("kind") == "defense":
+            return True
+        # 적: planned_skill 이 수비 스킬(def_kind)인 경우
+        sk = getattr(c, "planned_skill", None)
+        if sk and sk.get("def_kind"):
+            return True
+        return False
+
+    def _reorder_for_exec(self):
+        """실행 순서: 수비 스킬 사용자가 (속도순으로) 먼저, 그 다음 나머지(속도순).
+        turn_order 는 이미 속도순이므로 안정 정렬로 수비 우선만 적용."""
+        defenders = [c for c in self.turn_order if self._is_defense_action(c)]
+        others    = [c for c in self.turn_order if not self._is_defense_action(c)]
+        self.turn_order = defenders + others
 
     def planning_actor(self):
         """현재 계획 입력을 받을 아군 (없으면 None)"""
@@ -190,11 +214,10 @@ class BattleLogic:
             if target.hp <= 0:
                 continue
             if target.dodging:
-                dodge_power = target.calc_dodge_power()
                 skill_power = actor.calc_skill_power(skill)
-                if dodge_power > skill_power and "필중" not in skill.get("tags", []):
+                if target.dodge_power > skill_power and "필중" not in skill.get("tags", []):
                     self.log.append(f"{target.name} 회피!")
-                    results.append((target, 0))
+                    results.append((target, "MISS"))
                     continue
             dmg = actor.calc_damage(skill, target) * fraction
             applied = target.take_damage(dmg)
@@ -212,9 +235,8 @@ class BattleLogic:
             total = 0
             for _ in range(hits):
                 if target.dodging:
-                    dodge_power = target.calc_dodge_power()
                     skill_power = actor.calc_skill_power(skill)
-                    if dodge_power > skill_power and "필중" not in skill.get("tags", []):
+                    if target.dodge_power > skill_power and "필중" not in skill.get("tags", []):
                         continue
                 dmg = actor.calc_damage(skill, target)
                 applied = target.take_damage(dmg)
@@ -236,16 +258,31 @@ class BattleLogic:
             else:
                 self.log.append(f"{actor.name} → {target.name}: {skill['name']} (지원)")
 
-    # ── 수비 ──────────────────────────────────────────────────
+    # ── 수비 스킬 ─────────────────────────────────────────────
+    def apply_defense_skill(self, actor, skill, primary=None):
+        """수비 스킬 적용. def_kind: guard(방어)/dodge(회피)/assist(원호)"""
+        kind = skill.get("def_kind", "guard")
+        if kind == "guard":
+            actor.defending = True
+            shield = actor.calc_guard_shield(skill)
+            actor.shield += shield
+            self.log.append(f"{actor.name} 방어! (보호막 +{shield})")
+        elif kind == "dodge":
+            actor.dodging = True
+            actor.dodge_power = actor.calc_dodge_skill_power(skill)
+            self.log.append(f"{actor.name} 회피 자세! (회피위력 {actor.dodge_power})")
+        elif kind == "assist":
+            # 자신 제외 아군 1명에게 보호막 부여, 흡수분은 시전자에게 전가
+            target = primary
+            if target is not None and target is not actor and target.hp > 0:
+                shield = actor.calc_guard_shield(skill)
+                target.assist_shields.append({"amount": shield, "caster": actor})
+                self.log.append(f"{actor.name} → {target.name} 원호! (보호막 +{shield})")
+
+    # 구버전 호환 (사용 안 함)
     def do_defend(self, actor):
         actor.defending = True
-        shield = actor.calc_shield()
-        actor.shield += shield
-        self.log.append(f"{actor.name} 방어! (보호막 +{shield})")
-
-    def do_dodge(self, actor):
-        actor.dodging = True
-        self.log.append(f"{actor.name} 회피 자세!")
+        actor.shield += actor.calc_shield()
 
     # ── 적 AI ─────────────────────────────────────────────────
     def enemy_action(self, enemy):

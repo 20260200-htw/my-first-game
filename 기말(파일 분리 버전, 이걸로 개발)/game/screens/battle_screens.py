@@ -26,6 +26,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
     ZOOM_STEP      = 0.1
     STATE_MENU   = "menu"
     STATE_SKILL  = "skill"
+    STATE_DEFENSE = "defense"   # 수비 스킬 선택
     STATE_TARGET = "target"
     STATE_ENEMY  = "enemy"
     STATE_ANIM   = "anim"
@@ -101,6 +102,8 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self.menu_selected   = 0
         self.target_selected = 0
         self.skill_selected  = 0
+        self.defense_selected = 0
+        self.pending_is_defense = False
         self.UI_ITEMS        = ["스킬", "수비", "아이템"]
         self.pending_skill   = None   # 선택한 스킬 (대상 선택 대기)
         self.current_actor   = None
@@ -155,6 +158,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self._skill_icon_cache = {}
         self._sound_cache = {}      # 스킬 효과음 캐시
         self._effect_img_cache = {} # 이펙트 이미지 캐시
+        self._buff_icon_cache = {}  # 버프 아이콘 캐시
         self.order_expanded = False  # 행동 서열 펼치기
         self._disp_cam_x = 0.0
         self._disp_cam_y = 0.0
@@ -270,8 +274,11 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                 elif event.key in (pygame.K_RIGHT, pygame.K_d):
                     self.inspect_tab = (self.inspect_tab + 1) % len(self.TAB_NAMES)
                     self.inspect_scroll = 0
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
-                scroll_dir = -1 if event.button == 4 else 1
+            elif (event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5)) or event.type == pygame.MOUSEWHEEL:
+                if event.type == pygame.MOUSEWHEEL:
+                    scroll_dir = -1 if event.y > 0 else 1
+                else:
+                    scroll_dir = -1 if event.button == 4 else 1
                 H = self.H
                 W = self.W
                 pad         = int(W * 0.02)
@@ -282,7 +289,8 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                 bar_y       = pad + int(H * 0.22)
                 bar_h       = int(H * 0.03)
                 mp_y        = bar_y + bar_h + int(H * 0.012)
-                tab_y       = mp_y + bar_h + int(H * 0.03)
+                buff_y      = mp_y + bar_h + int(H * 0.012)
+                tab_y       = buff_y + int(H * 0.045) + int(H * 0.02)
                 tab_h       = int(H * 0.06)
                 content_y   = tab_y + tab_h
                 content_h   = H - pad * 2 - content_y
@@ -295,7 +303,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                     for passive in c.passives:
                         total += gap_name + len(passive["desc"]) * gap_desc + gap_block * 2
                     max_scroll = max(0, total - content_h)
-                elif self.inspect_tab == 1 and c and c.skills:
+                elif self.inspect_tab == 1 and c and (c.skills or getattr(c, "defense_skills", [])):
                     icon_size = int(H * 0.08)
                     gap_line  = int(H * 0.03)
                     gap_block = int(H * 0.015)
@@ -303,6 +311,14 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                     for skill in c.skills:
                         block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(skill["desc"]) * gap_line)
                         total += block_h + gap_block * 2
+                    # 수비 구분선 + 수비 스킬
+                    defense = getattr(c, "defense_skills", [])
+                    if defense:
+                        total += int(H * 0.05)  # 구분선
+                        for skill in defense:
+                            desc = skill.get("desc", [])
+                            block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(desc) * gap_line)
+                            total += block_h + gap_block * 2
                     max_scroll = max(0, total - content_h)
                 elif self.inspect_tab == 0 and c and c.overview:
                     line_h = int(H * 0.04)
@@ -325,7 +341,8 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                 bar_y       = pad + int(H * 0.22)
                 bar_h       = int(H * 0.03)
                 mp_y        = bar_y + bar_h + int(H * 0.012)
-                tab_y       = mp_y + bar_h + int(H * 0.03)
+                buff_y      = mp_y + bar_h + int(H * 0.012)
+                tab_y       = buff_y + int(H * 0.045) + int(H * 0.02)
                 tab_h       = int(H * 0.06)
                 if tab_y <= my <= tab_y + tab_h:
                     for ti in range(len(self.TAB_NAMES)):
@@ -362,7 +379,22 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                         self.state = self.STATE_SKILL
                         self.skill_selected = 0
                     elif self.UI_ITEMS[self.menu_selected] == "수비":
-                        self._do_defend()
+                        actor = self.logic.planning_actor()
+                        if actor and getattr(actor, "defense_skills", []):
+                            self.state = self.STATE_DEFENSE
+                            self.defense_selected = 0
+            elif self.state == self.STATE_DEFENSE:
+                actor = self.logic.planning_actor()
+                dfs = getattr(actor, "defense_skills", []) if actor else []
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self.defense_selected = (self.defense_selected - 1) % max(1, len(dfs))
+                elif event.key in (pygame.K_DOWN, pygame.K_s):
+                    self.defense_selected = (self.defense_selected + 1) % max(1, len(dfs))
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    if dfs:
+                        self._select_defense(dfs[self.defense_selected])
+                elif event.key == pygame.K_ESCAPE:
+                    self.state = self.STATE_MENU
             elif self.state == self.STATE_SKILL:
                 actor = self.logic.planning_actor()
                 skills = actor.skills if actor else []
@@ -387,7 +419,9 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._do_attack(self.target_selected)
                 elif event.key == pygame.K_ESCAPE:
-                    self.state = self.STATE_SKILL
+                    self.state = self.STATE_DEFENSE if self.pending_is_defense else self.STATE_SKILL
+                    self.pending_skill = None
+                    self.pending_is_defense = False
 
         elif event.type == pygame.MOUSEMOTION:
             mx, my = event.pos
@@ -419,6 +453,16 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                         slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
                         if slot_rect.collidepoint(mx, my):
                             self.skill_selected = i
+            elif self.state == self.STATE_DEFENSE:
+                actor = self.logic.planning_actor()
+                dfs = getattr(actor, "defense_skills", []) if actor else []
+                tr = self._target_rect()
+                if tr.collidepoint(mx, my) and dfs:
+                    slot_h = tr.height // max(5, len(dfs))
+                    for i in range(len(dfs)):
+                        slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                        if slot_rect.collidepoint(mx, my):
+                            self.defense_selected = i
             elif self.state == self.STATE_TARGET:
                 tr     = self._target_rect()
                 if tr.collidepoint(mx, my):
@@ -437,7 +481,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             if self._order_btn_rect and self._order_btn_rect.collidepoint(mx, my):
                 self.order_expanded = not self.order_expanded
                 return None
-            on_ui = ui.collidepoint(mx, my) or (self.state in (self.STATE_TARGET, self.STATE_SKILL) and tr.collidepoint(mx, my))
+            on_ui = ui.collidepoint(mx, my) or (self.state in (self.STATE_TARGET, self.STATE_SKILL, self.STATE_DEFENSE) and tr.collidepoint(mx, my))
             # 스프라이트 클릭(정보 열람)은 UI 영역이 아닐 때만 (UI가 위 레이어)
             if not on_ui:
                 # 적 스프라이트 클릭
@@ -462,7 +506,20 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                             self.state = self.STATE_SKILL
                             self.skill_selected = 0
                         elif self.UI_ITEMS[i] == "수비":
-                            self._do_defend()
+                            actor = self.logic.planning_actor()
+                            if actor and getattr(actor, "defense_skills", []):
+                                self.state = self.STATE_DEFENSE
+                                self.defense_selected = 0
+            elif self.state == self.STATE_DEFENSE and tr.collidepoint(mx, my):
+                actor = self.logic.planning_actor()
+                dfs = getattr(actor, "defense_skills", []) if actor else []
+                if dfs:
+                    slot_h = tr.height // max(5, len(dfs))
+                    for i in range(len(dfs)):
+                        slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                        if slot_rect.collidepoint(mx, my):
+                            self.defense_selected = i
+                            self._select_defense(dfs[i])
             elif self.state == self.STATE_SKILL and tr.collidepoint(mx, my):
                 actor = self.logic.planning_actor()
                 skills = actor.skills if actor else []
@@ -494,9 +551,12 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             # 우클릭: 뒤로 가기 (선택 취소)
             if self.state == self.STATE_TARGET:
-                self.state = self.STATE_SKILL
+                self.state = self.STATE_DEFENSE if self.pending_is_defense else self.STATE_SKILL
                 self.pending_skill = None
+                self.pending_is_defense = False
             elif self.state == self.STATE_SKILL:
+                self.state = self.STATE_MENU
+            elif self.state == self.STATE_DEFENSE:
                 self.state = self.STATE_MENU
             elif self.state == self.STATE_MENU and self.logic.planned:
                 # 계획 진행 중 → 전체 리셋
@@ -546,6 +606,15 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             self.logic.advance()
             self._sync_turn()
             return
+        if kind == "defense":
+            # 수비 스킬: 일반 스킬처럼 룰렛 + 지원 모션
+            skill = plan.get("skill")
+            primary = plan.get("primary")
+            if skill is None:
+                self.logic.advance(); self._sync_turn(); return
+            targets = [primary] if primary is not None else [actor]
+            self._start_roll(actor, skill, primary, targets)
+            return
         if kind == "skip":
             self.logic.advance()
             self._sync_turn()
@@ -570,6 +639,8 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         skill = self.pending_skill
         if actor is None or skill is None:
             return []
+        if self.pending_is_defense and skill.get("def_kind") == "assist":
+            return self._defense_target_list()
         side = skill.get("side", "적")
         if side == "자신":
             return [actor]
@@ -590,9 +661,44 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             primary = pool[target_idx]
         elif pool:
             primary = pool[0]
-        self.logic.set_plan(actor, "skill", skill=skill, primary=primary)
+        if self.pending_is_defense:
+            self.logic.set_plan(actor, "defense", skill=skill, primary=primary)
+        else:
+            self.logic.set_plan(actor, "skill", skill=skill, primary=primary)
         self.pending_skill = None
+        self.pending_is_defense = False
         self._after_plan_step()
+    def _select_defense(self, skill):
+        """수비 스킬 선택. 원호는 대상(아군) 지정, 그 외는 자신 대상 즉시 계획."""
+        actor = self.logic.planning_actor()
+        if actor is None:
+            return
+        self.pending_skill = skill
+        self.pending_is_defense = True
+        if skill.get("def_kind") == "assist":
+            # 자신 제외 아군 중 대상 선택
+            pool = self._defense_target_list()
+            if not pool:
+                # 지정 가능한 아군 없음 → 사용 불가, 목록으로 복귀
+                self.pending_skill = None
+                self.pending_is_defense = False
+                return
+            self.state = self.STATE_TARGET
+            self.target_selected = 0
+        else:
+            # 방어/회피: 자신 대상
+            self.logic.set_plan(actor, "defense", skill=skill, primary=actor)
+            self.pending_skill = None
+            self.pending_is_defense = False
+            self._after_plan_step()
+
+    def _defense_target_list(self):
+        """원호 대상 후보: 자신 제외 살아있는 아군"""
+        actor = self.logic.planning_actor() or self.logic.current_actor()
+        if actor is None:
+            return []
+        return [c for c in self.logic.allies_of(actor) if c.hp > 0 and c is not actor]
+
     def _do_defend(self):
         actor = self.logic.planning_actor()
         if actor:

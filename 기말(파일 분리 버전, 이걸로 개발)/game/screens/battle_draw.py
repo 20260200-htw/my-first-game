@@ -5,6 +5,48 @@ from data.battle_presets import ENEMY_FORMATIONS, ALLY_FORMATIONS
 
 
 class BattleDrawMixin:
+    def _draw_buff_row(self, combatant, cx, top_y, icon_size, centered=True):
+        """버프 아이콘들을 가로로 나열. 좌하단 중첩, 우하단 지속시간."""
+        buffs = getattr(combatant, "active_buffs", [])
+        if not buffs:
+            return
+        surf = self.screen
+        gap = max(2, int(icon_size * 0.12))
+        total_w = len(buffs) * icon_size + (len(buffs) - 1) * gap
+        start_x = (cx - total_w // 2) if centered else cx
+        small = self.fonts["small"]
+        for i, b in enumerate(buffs):
+            bx = start_x + i * (icon_size + gap)
+            rect = pygame.Rect(bx, top_y, icon_size, icon_size)
+            # 아이콘
+            icon = None
+            path = b.get("icon", "")
+            if path:
+                ckey = (path, icon_size)
+                icon = self._buff_icon_cache.get(ckey)
+                if icon is None and os.path.exists(path):
+                    try:
+                        raw = pygame.image.load(path).convert_alpha()
+                        icon = pygame.transform.smoothscale(raw, (icon_size, icon_size))
+                        self._buff_icon_cache[ckey] = icon
+                    except Exception:
+                        icon = None
+            if icon:
+                surf.blit(icon, rect)
+            else:
+                pygame.draw.rect(surf, (70, 70, 90), rect)
+                pygame.draw.rect(surf, WHITE, rect, 1)
+                draw_text(surf, b["name"][:1], small, WHITE, rect.centerx, rect.centery)
+            # 좌하단 중첩 수 (2 이상일 때만)
+            if b["stacks"] > 1:
+                self._draw_text_outlined(str(b["stacks"]), small, WHITE, (0,0,0),
+                                         rect.left + int(icon_size*0.18), rect.bottom - int(icon_size*0.18))
+            # 우하단 지속시간 (999 같은 영구는 생략)
+            dur = b["duration"]
+            if dur < 99:
+                self._draw_text_outlined(str(dur), small, (255,230,120), (0,0,0),
+                                         rect.right - int(icon_size*0.18), rect.bottom - int(icon_size*0.18))
+
     def _enemy_positions(self):
         from data.battle_presets import ENEMY_FORMATIONS
         W, H = self.W, self.H
@@ -267,20 +309,28 @@ class BattleDrawMixin:
                 bh = max(8, int(H * 0.028 * zoom))
                 bx = sx - bw // 2
                 by = (spr_rect.top - int(H * 0.04 * zoom)) if spr_rect else sy - int(H * 0.3 * zoom)
-                pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+                pygame.draw.rect(surf, BLACK, (bx, by, bw, bh))
                 fill = int(bw * e.hp / e.hp_max)
                 pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
+                _sh = e.total_shield()
+                if _sh > 0:
+                    pygame.draw.rect(surf, WHITE, (bx, by, int(bw * min(_sh / e.hp_max, 1.0)), bh))
                 pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 2)
+                self._draw_buff_row(e, sx, sy + int(H * 0.01 * zoom), max(14, int(H * 0.035 * zoom)))
             else:
                 # 고정 크기 (줌에만 비례, 스프라이트 크기 무관)
                 bw = int(W * 0.08 * zoom)
                 bh = max(4, int(H * 0.015 * zoom))
                 bx = sx - bw // 2
                 by = spr_rect.top - int(H * 0.02 * zoom) if spr_rect else sy - int(H * 0.25 * zoom)
-                pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+                pygame.draw.rect(surf, BLACK, (bx, by, bw, bh))
                 fill = int(bw * e.hp / e.hp_max)
                 pygame.draw.rect(surf, RED,   (bx, by, fill, bh))
+                _sh = e.total_shield()
+                if _sh > 0:
+                    pygame.draw.rect(surf, WHITE, (bx, by, int(bw * min(_sh / e.hp_max, 1.0)), bh))
                 pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
+                self._draw_buff_row(e, sx, sy + int(H * 0.01 * zoom), max(12, int(H * 0.03 * zoom)))
 
         # ── 아군 ──────────────────────────────────────────────────
         ally_pos = self._ally_positions()
@@ -306,16 +356,20 @@ class BattleDrawMixin:
             bh = max(4, int(H * 0.015 * zoom))
             bx = sx - bw // 2
             by = bar_top
-            pygame.draw.rect(surf, GRAY,  (bx, by, bw, bh))
+            pygame.draw.rect(surf, BLACK, (bx, by, bw, bh))
             fill = int(bw * a.hp / a.hp_max)
             pygame.draw.rect(surf, GREEN, (bx, by, fill, bh))
+            _sh = a.total_shield()
+            if _sh > 0:
+                pygame.draw.rect(surf, WHITE, (bx, by, int(bw * min(_sh / a.hp_max, 1.0)), bh))
             pygame.draw.rect(surf, BLACK, (bx, by, bw, bh), 1)
+            self._draw_buff_row(a, sx, sy + int(H * 0.01 * zoom), max(12, int(H * 0.03 * zoom)))
 
         # ── 비네팅 (캐릭터까지 덮고, 이 아래의 UI에는 적용 안 됨) ──
         surf.blit(self._vignette, (0, 0))
 
         # ── 행동 메뉴 UI ──────────────────────────────────────────
-        show_ui = self.state in (self.STATE_MENU, self.STATE_SKILL, self.STATE_TARGET)
+        show_ui = self.state in (self.STATE_MENU, self.STATE_SKILL, self.STATE_DEFENSE, self.STATE_TARGET)
         if show_ui:
             ui     = self._ui_rect()
             item_h = ui.height // (len(self.UI_ITEMS) + 1)
@@ -371,6 +425,45 @@ class BattleDrawMixin:
                 line2 = f"위력 {sk['power']}  |  {sk['type']}  |  {side} {count}{hits_str}"
                 draw_text_left(surf, line2, self.fonts["small_bold"], GRAY_D, ix, iy + int(H * 0.045))
                 # 설명 (최대 2줄)
+                dy = iy + int(H * 0.072)
+                for line in sk.get("desc", [])[:3]:
+                    draw_text_left(surf, line, self.fonts["small_bold"], BLACK, ix, dy)
+                    dy += int(H * 0.028)
+
+        # ── 수비 스킬 선택 창 ─────────────────────────────────────
+        if self.state == self.STATE_DEFENSE:
+            actor = self.logic.planning_actor()
+            dfs = getattr(actor, "defense_skills", []) if actor else []
+            tr = self._target_rect()
+            slot_h = tr.height // max(5, len(dfs))
+            pygame.draw.rect(surf, WHITE, tr)
+            pygame.draw.rect(surf, BLACK, tr, 2)
+            for i, sk in enumerate(dfs):
+                slot_rect = pygame.Rect(tr.left, tr.top + i * slot_h, tr.width, slot_h)
+                pygame.draw.line(surf, GRAY, (tr.left, tr.top + i * slot_h), (tr.right, tr.top + i * slot_h), 1)
+                sel = (i == self.defense_selected)
+                cy = slot_rect.centery
+                label = sk['name']
+                if sel:
+                    pygame.draw.rect(surf, BLACK, slot_rect)
+                    draw_text(surf, label, self.fonts["menu"], WHITE, tr.centerx, cy)
+                else:
+                    draw_text(surf, label, self.fonts["menu"], BLACK, tr.centerx, cy)
+            # 선택된 수비 스킬 정보 박스
+            if dfs and 0 <= self.defense_selected < len(dfs):
+                sk = dfs[self.defense_selected]
+                info_h = int(H * 0.16)
+                info_rect = pygame.Rect(tr.left, tr.top - info_h - int(H * 0.01), tr.width, info_h)
+                pygame.draw.rect(surf, WHITE, info_rect)
+                pygame.draw.rect(surf, BLACK, info_rect, 2)
+                pad = int(W * 0.008)
+                ix = info_rect.left + pad
+                iy = info_rect.top + pad
+                draw_text_left(surf, sk['name'], self.fonts["hint_bold"], BLACK, ix, iy + int(H * 0.015))
+                pw = actor.defense_skill_power(sk) if actor else 0
+                side = sk.get("side", "")
+                line2 = f"위력 {pw}  |  {sk.get('type','')}  |  {side}"
+                draw_text_left(surf, line2, self.fonts["small_bold"], GRAY_D, ix, iy + int(H * 0.045))
                 dy = iy + int(H * 0.072)
                 for line in sk.get("desc", [])[:3]:
                     draw_text_left(surf, line, self.fonts["small_bold"], BLACK, ix, dy)
@@ -659,13 +752,17 @@ class BattleDrawMixin:
         bar_h = int(H * 0.03)
         bar_x = info_x + pad
         bar_color = GREEN if c.ctype == "player" else RED
-        pygame.draw.rect(surf, GRAY,      (bar_x, bar_y, bar_w, bar_h))
+        pygame.draw.rect(surf, BLACK,     (bar_x, bar_y, bar_w, bar_h))
         fill = int(bar_w * c.hp / c.hp_max)
         pygame.draw.rect(surf, bar_color, (bar_x, bar_y, fill, bar_h))
+        _sh = c.total_shield()
+        if _sh > 0:
+            pygame.draw.rect(surf, WHITE, (bar_x, bar_y, int(bar_w * min(_sh / c.hp_max, 1.0)), bar_h))
         pygame.draw.rect(surf, BLACK,     (bar_x, bar_y, bar_w, bar_h), 2)
-        hp_str = f"{c.hp} / {c.hp_max}"
-        draw_text(surf, hp_str, self.fonts["hint"], BLACK,
-                  bar_x + bar_w // 2, bar_y + bar_h // 2)
+        # 보호막 | 현재체력 / 최대체력
+        hp_str = f"{_sh} | {c.hp} / {c.hp_max}"
+        self._draw_text_outlined(hp_str, self.fonts["hint"], WHITE, BLACK,
+                                 bar_x + bar_w // 2, bar_y + bar_h // 2)
 
         # 마력바 (체력바 아래, 같은 길이/두께)
         mp_y = bar_y + bar_h + int(H * 0.012)
@@ -679,8 +776,14 @@ class BattleDrawMixin:
         draw_text(surf, mp_str, self.fonts["hint"], WHITE,
                   bar_x + bar_w // 2, mp_y + bar_h // 2)
 
-        # 탭 (마력바 아래로)
-        tab_y = mp_y + bar_h + int(H * 0.03)
+        # 버프 행 (마력바 아래)
+        buff_y = mp_y + bar_h + int(H * 0.012)
+        buff_size = int(H * 0.045)
+        if getattr(c, "active_buffs", []):
+            self._draw_buff_row(c, bar_x + buff_size // 2, buff_y, buff_size, centered=False)
+
+        # 탭 (버프 행 아래로)
+        tab_y = buff_y + buff_size + int(H * 0.02)
         tab_h = int(H * 0.06)
         for ti, tname in enumerate(self.TAB_NAMES):
             tx   = info_x + pad + ti * tab_w
@@ -720,7 +823,12 @@ class BattleDrawMixin:
                 draw_text(surf, "준비 중입니다.", self.fonts["menu"], GRAY_D,
                           content_rect.centerx, content_rect.centery)
         elif self.inspect_tab == 1:
-            if c.skills:
+            # 일반 스킬 + (구분선) + 수비 스킬
+            defense = getattr(c, "defense_skills", [])
+            skill_items = list(c.skills)
+            if defense:
+                skill_items = skill_items + ["__DEFENSE_SEP__"] + list(defense)
+            if skill_items:
                 icon_size   = int(H * 0.08)
                 gap_line    = int(H * 0.03)
                 gap_block   = int(H * 0.015)
@@ -728,7 +836,15 @@ class BattleDrawMixin:
                 ty          = content_rect.top + int(H * 0.02) - self.inspect_scroll
                 old_clip    = surf.get_clip()
                 surf.set_clip(content_rect)
-                for si, skill in enumerate(c.skills):
+                for si, skill in enumerate(skill_items):
+                    # 수비 구분선
+                    if skill == "__DEFENSE_SEP__":
+                        if content_rect.top <= ty + int(H*0.02) <= content_rect.bottom:
+                            label = "─" * 14 + " 수비 " + "─" * 14
+                            draw_text(surf, label, self.fonts["small_bold"], GRAY_D,
+                                      content_rect.centerx, ty + int(H*0.02))
+                        ty += int(H * 0.05)
+                        continue
                     # 아이콘 사각형 + 스프라이트
                     icon_rect = pygame.Rect(tx, ty, icon_size, icon_size)
                     if content_rect.top <= ty + icon_size <= content_rect.bottom or content_rect.top <= ty <= content_rect.bottom:
@@ -754,7 +870,11 @@ class BattleDrawMixin:
                     side  = skill.get("side", skill.get("target", ""))
                     count = skill.get("count", "")
                     target_str = f"{side} {count}".strip()
-                    elements = f"위력 {skill['power']}  |  {skill['type']}  |  {target_str}{hits_str}"
+                    if skill.get("def_kind"):
+                        _pw = c.defense_skill_power(skill)
+                    else:
+                        _pw = skill['power']
+                    elements = f"위력 {_pw}  |  {skill['type']}  |  {target_str}{hits_str}"
                     if tags_str:
                         elements += f"  |  {tags_str}"
                     if content_rect.top <= name_y <= content_rect.bottom:
@@ -774,7 +894,7 @@ class BattleDrawMixin:
                     ty += block_h + gap_block
 
                     # 구분선 (마지막 제외)
-                    if si < len(c.skills) - 1:
+                    if si < len(skill_items) - 1 and skill_items[si+1] != "__DEFENSE_SEP__":
                         if content_rect.top <= ty <= content_rect.bottom:
                             pygame.draw.line(surf, GRAY,
                                 (content_rect.left + int(W * 0.01), ty),

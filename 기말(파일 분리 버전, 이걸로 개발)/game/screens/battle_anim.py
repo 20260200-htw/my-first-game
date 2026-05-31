@@ -8,7 +8,10 @@ class BattleAnimMixin:
     ROLL_HOLD = 1000  # 확정 후 대기(ms)
     def _start_roll(self, actor, skill, primary, targets):
         """스킬 위력 룰렛: 아이콘 위 숫자가 랜덤 변동하다 최종 위력 확정"""
-        final_power = actor.calc_skill_power(skill)
+        if skill.get("def_kind"):
+            final_power = actor.defense_skill_power(skill)   # 수비: 회피=레벨/2, 방어/원호=보호막
+        else:
+            final_power = actor.calc_skill_power(skill)
         self.roll = {
             "actor": actor, "skill": skill, "primary": primary, "targets": targets,
             "timer": 0.0, "final_power": int(round(final_power)),
@@ -198,8 +201,11 @@ class BattleAnimMixin:
         elif phase == "hit":
             # 타격 시점(타이밍 절반)에 1회 분량 피해 + 이펙트 + 쉐이크
             if not a.get("hit_applied") and a["timer"] >= self.CAST_HIT * 0.5:
-                # 지원/회복 스킬은 use_skill(회복·버프), 공격 스킬은 분할 피해
-                if self.logic.is_support(a["skill"]):
+                # 수비 스킬 / 지원·회복 / 공격 분기
+                if a["skill"].get("def_kind"):
+                    self.logic.apply_defense_skill(a["actor"], a["skill"], primary=a["primary"])
+                    _res = []
+                elif self.logic.is_support(a["skill"]):
                     _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"])
                 else:
                     _res = self.logic.apply_single_hit(a["actor"], a["skill"], a["targets"], a.get("fraction", 1.0))
@@ -264,14 +270,22 @@ class BattleAnimMixin:
         self.total_side = "ally" if actor in self.allies else "enemy"
         self.total_show = False
     def _register_damage(self, results):
-        """피해 결과 리스트로 팝업 생성 + Total 누적"""
+        """피해 결과 리스트로 팝업 생성 + Total 누적.
+        amount 가 "MISS"(회피)면 팝업만 띄우고 Total 에는 더하지 않음."""
         for target, amount in results:
-            self.dmg_popups.append({
-                "target": target, "amount": int(amount),
-                "timer": 900, "life": 900,
-            })
-            self.total_dmg += int(amount)
-            self.total_show = True
+            if amount == "MISS":
+                self.dmg_popups.append({
+                    "target": target, "amount": "MISS",
+                    "timer": 900, "life": 900,
+                })
+                self.total_show = True
+            else:
+                self.dmg_popups.append({
+                    "target": target, "amount": int(amount),
+                    "timer": 900, "life": 900,
+                })
+                self.total_dmg += int(amount)
+                self.total_show = True
     def _clear_total(self):
         self.total_show = False
         self.total_dmg = 0

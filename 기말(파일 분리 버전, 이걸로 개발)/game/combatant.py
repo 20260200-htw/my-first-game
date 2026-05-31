@@ -34,7 +34,28 @@ class Combatant:
         self.overview    = defn.get("overview", [])
         self.passives    = defn.get("passives", [])
         self.buffs       = defn.get("buffs", {})
+        self.active_buffs = []   # 런타임 버프 리스트 (아래 BUFF 메서드로 관리)
         self.skills      = defn.get("skills", [])
+        # 수비 스킬: 항목은 공용 이름(str) 또는 커스텀 dict.
+        from data.characters_data import DEFENSE_SKILLS
+        entries = defn.get("defense_skills", ["방어", "회피", "원호"])
+        self.defense_skills = []
+        for ent in entries:
+            if isinstance(ent, str):
+                if ent in DEFENSE_SKILLS:
+                    self.defense_skills.append(dict(DEFENSE_SKILLS[ent]))
+            elif isinstance(ent, dict):
+                sk = dict(ent)
+                sk.setdefault("power", 0)        # 회피 등은 power 없어도 됨
+                sk.setdefault("type", "물리")
+                sk.setdefault("tags", ["지원"])
+                sk.setdefault("motion", "command")
+                sk.setdefault("def_kind", "guard")
+                sk.setdefault("count", "단일")
+                sk.setdefault("hits", 1)
+                sk.setdefault("sprite", "")
+                sk.setdefault("side", "아군" if sk["def_kind"] == "assist" else "자신")
+                self.defense_skills.append(sk)
         self.sprite      = None
         self.sprite_orig = None
         self.profile     = None
@@ -42,10 +63,12 @@ class Combatant:
 
         # 전투 상태
         self.speed       = 0
-        self.shield      = 0
+        self.shield      = 0       # 일반 보호막 (방어)
+        self.assist_shields = []   # 원호 보호막 [{"amount":남은량, "caster":시전자}]
         self.planned_skill = None
-        self.defending   = False  # 이번 턴 방어 중
-        self.dodging     = False  # 이번 턴 회피 중
+        self.defending   = False   # 이번 턴 방어 중
+        self.dodging     = False   # 이번 턴 회피 중
+        self.dodge_power = 0       # 이번 턴 회피 위력 (0이면 회피 안 함)
 
         self._load_sprite(defn["sprite"], max_sprite_w, max_sprite_h)
 
@@ -100,10 +123,24 @@ class Combatant:
         return self.speed
 
     def _iter_effects(self):
-        """패시브 effects 평탄화"""
+        """패시브 effects + 버프 effects(중첩 반영) 평탄화"""
         for p in self.passives:
             for e in p.get("effects", []):
                 yield e
+        for e in self._buff_effects():
+            yield e
+
+    def _buff_effects(self):
+        """현재 버프들이 만들어내는 effects 리스트 (중첩 수 반영).
+        버프별 효과는 여기서 개별 정의."""
+        out = []
+        for b in self.active_buffs:
+            name = b["name"]
+            s = b["stacks"]
+            if name == "전황 분석":
+                # 중첩당 주는 피해 +5% (5→10→15... 합산)
+                out.append({"kind": "deal_mult", "value": 1 + 0.05 * s})
+        return out
 
     def _power_add_total(self):
         """최종 위력 가감 합 (power_add)"""
@@ -157,6 +194,56 @@ class Combatant:
                 labels.append(f"위력 {sign}{int(v)}")
         return labels
 
+    # ── 버프 시스템 ───────────────────────────────────────────
+    # 버프 객체 구조:
+    #   {"name": 표시이름, "stacks": 현재중첩, "max_stacks": 최대중첩,
+    #    "duration": 남은턴, "init_duration": 초기지속, "icon": 아이콘경로,
+    #    "data": {버프별 추가정보}}
+    def add_buff(self, name, max_stacks=1, duration=999, icon="", data=None):
+        """버프 부여. 이미 있으면 중첩 +1(최대치 제한) + 지속시간 초기화로 리셋."""
+        for b in self.active_buffs:
+            if b["name"] == name:
+                b["stacks"] = min(b["max_stacks"], b["stacks"] + 1)
+                b["duration"] = b["init_duration"]   # 갱신
+                if data:
+                    b["data"].update(data)
+                return b
+        b = {"name": name, "stacks": 1, "max_stacks": max_stacks,
+             "duration": duration, "init_duration": duration,
+             "icon": icon, "data": dict(data) if data else {}}
+        self.active_buffs.append(b)
+        return b
+
+    def get_buff(self, name):
+        for b in self.active_buffs:
+            if b["name"] == name:
+                return b
+        return None
+
+    def buff_stacks(self, name):
+        b = self.get_buff(name)
+        return b["stacks"] if b else 0
+
+    def remove_buff(self, name):
+        self.active_buffs = [b for b in self.active_buffs if b["name"] != name]
+
+    def tick_buffs(self):
+        """턴 시작 시 호출: 모든 버프 지속시간 -1, 0 이하 제거.
+        (획득한 턴은 감소 안 함 → 획득 직후 첫 tick 에서 1 줄어듦)"""
+        for b in self.active_buffs:
+            b["duration"] -= 1
+        self.active_buffs = [b for b in self.active_buffs if b["duration"] > 0]
+
+    def has_passive(self, name):
+        return any(p["name"] == name for p in self.passives)
+
+    def on_turn_start(self, logic=None):
+        """매 턴(계획 페이즈) 시작 시 발동하는 패시브 처리."""
+        # 전황 분석: 매 턴 시작 시 중첩 +1 (중첩당 주는 피해 +5%)
+        if self.has_passive("전황 분석"):
+            self.add_buff("전황 분석", max_stacks=99, duration=999,
+                          icon="assets/buff_analysis.png")
+
     def calc_skill_power(self, skill):
         """스킬 최종 위력 = 기본 위력 + 레벨 보정 + 위력 가감(패시브)"""
         power = skill["power"] + (self.level * self.POWER_PER_LEVEL)
@@ -182,22 +269,68 @@ class Combatant:
         return dmg
 
     def calc_shield(self):
-        """방어 시 보호막 = 레벨 + 물리 레벨 + 마법 레벨"""
+        """방어 시 보호막 = 레벨 + 물리 레벨 + 마법 레벨 (구버전, 미사용)"""
         return self.level + self.phys_level + self.magic_level
+
+    # ── 수비 스킬 계산식 ──────────────────────────────────────
+    def total_shield(self):
+        """표시용 총 보호막 = 일반 보호막 + 원호 보호막 합"""
+        return self.shield + sum(s["amount"] for s in self.assist_shields)
+
+    def calc_guard_shield(self, skill):
+        """방어/원호 보호막 = 스킬위력 × (1 + (물리+마법)/2 × 0.04)"""
+        sp = self.calc_skill_power(skill)
+        if sp < 0: sp = 0
+        avg = (self.phys_level + self.magic_level) / 2
+        return int(sp * (1 + avg * self.DAMAGE_PER_LEVEL))
+
+    def calc_dodge_skill_power(self, skill=None):
+        """회피 최종 위력 = 레벨 / 2 (기본위력·보정 없음)"""
+        return int(self.level / 2)
+
+    def defense_skill_power(self, skill):
+        """수비 스킬의 '최종 위력' (열람창/룰렛 표시 및 적용에 공통 사용).
+        회피=레벨/2, 방어/원호=보호막 계산값."""
+        kind = skill.get("def_kind", "guard")
+        if kind == "dodge":
+            return self.calc_dodge_skill_power(skill)
+        else:  # guard / assist
+            return self.calc_guard_shield(skill)
 
     def calc_dodge_power(self, item_bonus=0):
         """회피 최종 위력 = 레벨 + 아이템 보정"""
         return self.level + item_bonus
 
     def take_damage(self, dmg):
-        """피해 적용 (보호막 우선 차감)"""
+        """피해 적용. 차감 우선순위: 원호 보호막 → 일반 보호막 → 체력.
+        원호 보호막이 흡수한 만큼은 그 보호막을 부여한 시전자에게 전가된다.
+        반환값 = 들어온 총 피해(보호막이 흡수한 양 포함). 표시용."""
         dmg = int(dmg)
-        if self.shield > 0:
+        incoming = dmg   # 들어온 총 피해 (표시용)
+        # 1) 원호 보호막 (흡수분은 caster 에게 전가)
+        for sh in self.assist_shields:
+            if dmg <= 0:
+                break
+            if sh["amount"] <= 0:
+                continue
+            absorbed = min(dmg, sh["amount"])
+            sh["amount"] -= absorbed
+            dmg -= absorbed
+            caster = sh.get("caster")
+            if caster is not None and caster is not self and caster.hp > 0:
+                # 전가: 시전자에게 흡수분만큼 직접 체력 피해 (재귀 전가 없음)
+                caster.hp = max(0, caster.hp - absorbed)
+        # 소진된 원호 보호막 제거
+        self.assist_shields = [s for s in self.assist_shields if s["amount"] > 0]
+        # 2) 일반 보호막
+        if dmg > 0 and self.shield > 0:
             if dmg <= self.shield:
                 self.shield -= dmg
-                return 0
+                return incoming
             else:
                 dmg -= self.shield
                 self.shield = 0
-        self.hp = max(0, self.hp - dmg)
-        return dmg
+        # 3) 체력
+        if dmg > 0:
+            self.hp = max(0, self.hp - dmg)
+        return incoming

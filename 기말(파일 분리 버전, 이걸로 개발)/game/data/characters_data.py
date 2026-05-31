@@ -1,3 +1,19 @@
+# ── 수비 스킬 공용 정의 ───────────────────────────────────────────
+# def_kind: "guard"(방어/자신 보호막) / "dodge"(회피/자신) / "assist"(원호/아군)
+# 캐릭터 정의에 "defense_skills": ["방어","회피","원호"] 처럼 이름 리스트로 지정.
+DEFENSE_SKILLS = {
+    "방어": {"name": "방어", "power": 50, "type": "물리", "side": "자신", "count": "단일",
+            "hits": 1, "tags": ["지원"], "motion": "command", "def_kind": "guard",
+            "sprite": "", "desc": ["자신에게 보호막을 둘러 피해를 막는다."]},
+    "회피": {"name": "회피", "power": 50, "type": "물리", "side": "자신", "count": "단일",
+            "hits": 1, "tags": ["지원"], "motion": "command", "def_kind": "dodge",
+            "sprite": "", "desc": ["회피 자세. 위력보다 약한 공격을 무효화한다."]},
+    "원호": {"name": "원호", "power": 50, "type": "물리", "side": "아군", "count": "단일",
+            "hits": 1, "tags": ["지원"], "motion": "command", "def_kind": "assist",
+            "sprite": "", "desc": ["아군에게 보호막을 부여한다.",
+                                    "그 보호막이 막은 피해만큼 자신이 대신 받는다."]},
+}
+
 ENEMY_DEFS = {
     "벨라": {
         "title":         "왕국 기사단장",
@@ -302,6 +318,7 @@ ENEMY_DEFS = {
     },
     "보스 마리": {
         "name":          "마리",
+        "defense_skills": ["방어", "회피", "원호"],
         "type":          "boss",
         "level":         87,
         "phys_level":    83,
@@ -488,6 +505,7 @@ ENEMY_DEFS = {
 ALLY_DEFS = {
     "주인공": {
         "name":          "주인공",
+        "defense_skills": ["방어", "회피", "원호"],
         "type":          "player",
         "level":         10,
         "phys_level":    50,
@@ -508,6 +526,7 @@ ALLY_DEFS = {
     },
     "아우렐리우스": {
         "name":          "아우렐리우스",
+        "defense_skills": ["방어", "원호"],
         "type":          "ally",
         "level":         81,
         "phys_level":    85,
@@ -580,6 +599,7 @@ ALLY_DEFS = {
     },
     "금강": {
         "name":          "금강",
+        "defense_skills": ["방어", "회피", "원호"],
         "type":          "ally",
         "level":         79,
         "phys_level":    87,
@@ -649,6 +669,7 @@ ALLY_DEFS = {
     },
     "마리": {
         "name":          "마리",
+        "defense_skills": ["회피"],
         "type":          "ally",
         "level":         87,
         "phys_level":    83,
@@ -733,6 +754,7 @@ ALLY_DEFS = {
     },
     "막심 오그네프": {
         "name":          "막심 오그네프",
+        "defense_skills": ["방어"],
         "type":          "ally",
         "level":         90,
         "phys_level":    89,

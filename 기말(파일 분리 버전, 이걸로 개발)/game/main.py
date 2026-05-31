@@ -23,6 +23,7 @@ def load_fonts(H):
         "hint":       f(int(H * 0.022)),
         "hint_bold":  fb(int(H * 0.022)),
         "small_bold": fb(int(H * 0.016)),
+        "small":      f(int(H * 0.016)),
     }
 
 
