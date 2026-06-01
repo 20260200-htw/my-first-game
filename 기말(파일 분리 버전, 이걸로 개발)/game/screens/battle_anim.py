@@ -295,9 +295,9 @@ class BattleAnimMixin:
             self.effects.append({"img": img, "target": target, "timer": 250})
     def _melee_durations(self, a):
         """모션별 단계 지속시간(ms) 반환"""
-        name = a["skill"].get("name")
-        if name == "난무":
-            # 난무 전용: 공격(dash)·간격(reset)을 기본의 1/4로 빠르게
+        split = a["skill"].get("split", 1)
+        if split >= 2:
+            # 난무류(split 2 이상): 공격(dash)·간격(reset)을 기본의 1/4로 빠르게
             return {"zoom_in": self.ANIM_ZOOM_IN, "approach": self.ANIM_APPROACH,
                     "dash": self.ANIM_DASH // 4, "reset": self.ANIM_RESET // 4,
                     "return": self.ANIM_RETURN}

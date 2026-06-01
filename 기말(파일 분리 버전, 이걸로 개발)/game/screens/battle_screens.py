@@ -22,7 +22,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
     NORMAL_HEIGHT_RATIO = 0.45
     CAM_MOVE_RATIO = 0.25  # 해상도의 25% 추가 이동 가능
     ZOOM_MIN       = 0.5
-    ZOOM_MAX       = 1
+    ZOOM_MAX       = 2
     ZOOM_STEP      = 0.1
     STATE_MENU   = "menu"
     STATE_SKILL  = "skill"
@@ -120,6 +120,8 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self.inspect_tab     = 0
         self.inspect_sprite  = None
         self.inspect_scroll  = 0
+        self._inspect_dragging = False
+        self._drag_last_y = 0
         self._underline_rects = []
 
         # ── 카메라 ────────────────────────────────────────────────
@@ -257,6 +259,58 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             )
         else:
             self.inspect_sprite = None
+    def _inspect_content_geom(self):
+        """열람창 content 영역의 (content_y, content_h) 반환"""
+        W, H = self.W, self.H
+        pad   = int(W * 0.02)
+        bar_y = pad + int(H * 0.22)
+        bar_h = int(H * 0.03)
+        mp_y  = bar_y + bar_h + int(H * 0.012)
+        tab_y = mp_y + bar_h + int(H * 0.03)
+        tab_h = int(H * 0.06)
+        content_y = tab_y + tab_h
+        content_h = H - pad * 2 - content_y
+        return content_y, content_h
+
+    def _inspect_max_scroll(self):
+        """현재 열람 탭 내용의 최대 스크롤량"""
+        H = self.H
+        c = self._inspect_target()
+        if c is None:
+            return 0
+        content_y, content_h = self._inspect_content_geom()
+        if self.inspect_tab == 2 and c.passives:
+            gap_name  = int(H * 0.035)
+            gap_desc  = int(H * 0.03)
+            gap_block = int(H * 0.015)
+            total = int(H * 0.02)
+            for passive in c.passives:
+                total += gap_name + len(passive["desc"]) * gap_desc + gap_block * 2
+            return max(0, total - content_h)
+        if self.inspect_tab == 1 and (c.skills or getattr(c, "defense_skills", [])):
+            icon_size = int(H * 0.08)
+            gap_line  = int(H * 0.03)
+            gap_block = int(H * 0.015)
+            total = int(H * 0.02)
+            for skill in c.skills:
+                block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(skill["desc"]) * gap_line)
+                total += block_h + gap_block * 2
+            defense = getattr(c, "defense_skills", [])
+            if defense:
+                total += int(H * 0.05)
+                for skill in defense:
+                    desc = skill.get("desc", [])
+                    block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(desc) * gap_line)
+                    total += block_h + gap_block * 2
+            return max(0, total - content_h)
+        if self.inspect_tab == 0 and c.overview:
+            line_h = int(H * 0.04)
+            total  = int(H * 0.025)
+            for line in c.overview:
+                total += line_h // 2 if line == "" else line_h
+            return max(0, total - content_h)
+        return 0
+
     def _inspect_target(self):
         return self.inspect_enemy or self.inspect_ally
     def _close_inspect(self):
@@ -279,55 +333,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                     scroll_dir = -1 if event.y > 0 else 1
                 else:
                     scroll_dir = -1 if event.button == 4 else 1
-                H = self.H
-                W = self.W
-                pad         = int(W * 0.02)
-                left_w      = int(W * 0.48)
-                info_w      = W - pad * 2 - left_w
-                tab_total_w = info_w - pad * 2
-                tab_w       = tab_total_w // len(self.TAB_NAMES)
-                bar_y       = pad + int(H * 0.22)
-                bar_h       = int(H * 0.03)
-                mp_y        = bar_y + bar_h + int(H * 0.012)
-                buff_y      = mp_y + bar_h + int(H * 0.012)
-                tab_y       = buff_y + int(H * 0.045) + int(H * 0.02)
-                tab_h       = int(H * 0.06)
-                content_y   = tab_y + tab_h
-                content_h   = H - pad * 2 - content_y
-                c = self._inspect_target()
-                if self.inspect_tab == 2 and c and c.passives:
-                    gap_name  = int(H * 0.035)
-                    gap_desc  = int(H * 0.03)
-                    gap_block = int(H * 0.015)
-                    total = int(H * 0.02)
-                    for passive in c.passives:
-                        total += gap_name + len(passive["desc"]) * gap_desc + gap_block * 2
-                    max_scroll = max(0, total - content_h)
-                elif self.inspect_tab == 1 and c and (c.skills or getattr(c, "defense_skills", [])):
-                    icon_size = int(H * 0.08)
-                    gap_line  = int(H * 0.03)
-                    gap_block = int(H * 0.015)
-                    total = int(H * 0.02)
-                    for skill in c.skills:
-                        block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(skill["desc"]) * gap_line)
-                        total += block_h + gap_block * 2
-                    # 수비 구분선 + 수비 스킬
-                    defense = getattr(c, "defense_skills", [])
-                    if defense:
-                        total += int(H * 0.05)  # 구분선
-                        for skill in defense:
-                            desc = skill.get("desc", [])
-                            block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(desc) * gap_line)
-                            total += block_h + gap_block * 2
-                    max_scroll = max(0, total - content_h)
-                elif self.inspect_tab == 0 and c and c.overview:
-                    line_h = int(H * 0.04)
-                    total  = int(H * 0.025)
-                    for line in c.overview:
-                        total += line_h // 2 if line == "" else line_h
-                    max_scroll = max(0, total - content_h)
-                else:
-                    max_scroll = 0
+                max_scroll = self._inspect_max_scroll()
                 self.inspect_scroll = max(0, min(max_scroll, self.inspect_scroll + scroll_dir * 20))
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
@@ -341,8 +347,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                 bar_y       = pad + int(H * 0.22)
                 bar_h       = int(H * 0.03)
                 mp_y        = bar_y + bar_h + int(H * 0.012)
-                buff_y      = mp_y + bar_h + int(H * 0.012)
-                tab_y       = buff_y + int(H * 0.045) + int(H * 0.02)
+                tab_y       = mp_y + bar_h + int(H * 0.03)
                 tab_h       = int(H * 0.06)
                 if tab_y <= my <= tab_y + tab_h:
                     for ti in range(len(self.TAB_NAMES)):
@@ -350,6 +355,23 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                         if tx <= mx <= tx + tab_w:
                             self.inspect_tab = ti
                             self.inspect_scroll = 0
+                else:
+                    # content 영역 안에서 좌클릭 홀드 → 드래그 스크롤 시작
+                    content_y = tab_y + tab_h
+                    content_bottom = H - pad
+                    if (content_y <= my <= content_bottom
+                            and info_x <= mx <= info_x + info_w):
+                        self._inspect_dragging = True
+                        self._drag_last_y = my
+            elif event.type == pygame.MOUSEMOTION and getattr(self, "_inspect_dragging", False):
+                # 드래그 중: 마우스가 위로 가면 내용도 위로(스크롤 증가)
+                _, my = event.pos
+                dy = self._drag_last_y - my
+                self._drag_last_y = my
+                max_scroll = self._inspect_max_scroll()
+                self.inspect_scroll = max(0, min(max_scroll, self.inspect_scroll + dy))
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self._inspect_dragging = False
             return None
 
         if event.type == pygame.KEYDOWN:

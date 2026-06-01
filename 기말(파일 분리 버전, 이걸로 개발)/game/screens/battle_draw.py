@@ -735,14 +735,6 @@ class BattleDrawMixin:
         draw_text_left(surf, name_str, self.fonts["title"], BLACK, info_x + pad, name_y)
         draw_text_left(surf, stat_str, self.fonts["menu"],  BLACK, info_x + pad, stat_y)
 
-        # 이름 옆에 현재 받는 효과 (작은 글씨)
-        labels = c.active_effect_labels() if hasattr(c, "active_effect_labels") else []
-        if labels:
-            name_w = self.fonts["title"].size(name_str)[0]
-            ex = info_x + pad + name_w + int(W * 0.015)
-            ey = name_y + int(H * 0.012)
-            eff_text = "  ".join(labels)
-            draw_text_left(surf, eff_text, self.fonts["small_bold"], (90, 90, 90), ex, ey)
 
         # 체력바
         tab_total_w  = info_w - pad * 2
@@ -776,14 +768,8 @@ class BattleDrawMixin:
         draw_text(surf, mp_str, self.fonts["hint"], WHITE,
                   bar_x + bar_w // 2, mp_y + bar_h // 2)
 
-        # 버프 행 (마력바 아래)
-        buff_y = mp_y + bar_h + int(H * 0.012)
-        buff_size = int(H * 0.045)
-        if getattr(c, "active_buffs", []):
-            self._draw_buff_row(c, bar_x + buff_size // 2, buff_y, buff_size, centered=False)
-
-        # 탭 (버프 행 아래로)
-        tab_y = buff_y + buff_size + int(H * 0.02)
+        # 탭 (마력바 아래로)  ※버프 행은 나중에 다시 추가 예정
+        tab_y = mp_y + bar_h + int(H * 0.03)
         tab_h = int(H * 0.06)
         for ti, tname in enumerate(self.TAB_NAMES):
             tx   = info_x + pad + ti * tab_w
@@ -916,7 +902,14 @@ class BattleDrawMixin:
                 self._underline_rects = []
                 for pi, passive in enumerate(c.passives):
                     if content_rect.top <= ty <= content_rect.bottom:
-                        draw_text_left(surf, f"<{passive['name']}>", self.fonts["hint_bold"], BLACK, tx, ty + gap_name // 2)
+                        nm = f"<{passive['name']}>"
+                        draw_text_left(surf, nm, self.fonts["hint_bold"], BLACK, tx, ty + gap_name // 2)
+                        # 상태 라벨 (ON/OFF/NONE)
+                        status = c.passive_status(passive) if hasattr(c, "passive_status") else "NONE"
+                        st_color = {"ON": (40, 160, 70), "OFF": (170, 90, 90), "NONE": (160, 160, 160)}.get(status, (160,160,160))
+                        nm_w = self.fonts["hint_bold"].size(nm)[0]
+                        draw_text_left(surf, status, self.fonts["small_bold"], st_color,
+                                       tx + nm_w + int(W * 0.01), ty + gap_name // 2)
                     ty += gap_name
                     for line in passive["desc"]:
                         if content_rect.top <= ty <= content_rect.bottom:

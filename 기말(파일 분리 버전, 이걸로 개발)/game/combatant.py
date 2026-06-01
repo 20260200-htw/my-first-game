@@ -123,12 +123,23 @@ class Combatant:
         return self.speed
 
     def _iter_effects(self):
-        """패시브 effects + 버프 effects(중첩 반영) 평탄화"""
+        """패시브 effects + 패시브 동적 effect + 버프 effects(중첩 반영) 평탄화"""
         for p in self.passives:
             for e in p.get("effects", []):
                 yield e
+        for e in self._passive_dynamic_effects():
+            yield e
         for e in self._buff_effects():
             yield e
+
+    def _passive_dynamic_effects(self):
+        """데이터 effects 로 표현 못 하는 조건부 패시브 효과를 동적 생성.
+        (desc 만 있는 패시브를 이름으로 인식해 effect 부여)"""
+        out = []
+        # 바다의 처형자: 대상 체력이 최대의 30% 이하면 그 대상에게 주는 피해 +30%
+        if self.has_passive("바다의 처형자"):
+            out.append({"kind": "deal_mult", "value": 1.3, "if_target_hp_ratio_below": 0.3})
+        return out
 
     def _buff_effects(self):
         """현재 버프들이 만들어내는 effects 리스트 (중첩 수 반영).
@@ -160,6 +171,13 @@ class Combatant:
             if vs:
                 race = getattr(target, "race", None) if target else None
                 if race not in vs:
+                    continue
+            # 대상 체력 비율 조건 (예: 처형 - 대상 HP 30% 이하)
+            hp_below = e.get("if_target_hp_ratio_below")
+            if hp_below is not None:
+                if target is None or target.hp_max <= 0:
+                    continue
+                if (target.hp / target.hp_max) > hp_below:
                     continue
             mult *= e.get("value", 1.0)
         return mult
@@ -236,6 +254,33 @@ class Combatant:
 
     def has_passive(self, name):
         return any(p["name"] == name for p in self.passives)
+
+    # 코드로 구현되어 실제 작동하는 패시브 이름 (정적 effects 외)
+    IMPLEMENTED_PASSIVES = {"전황 분석", "바다의 처형자", "나는 검이 두 자루야~"}
+
+    def is_maryeok_active(self):
+        """'마력 발산' 상태 여부. (아직 미구현 → 항상 False)"""
+        return False
+
+    def passive_status(self, passive):
+        """패시브의 현재 상태 라벨: 'ON' / 'OFF' / 'NONE'
+        - 마력 발산 계열: 마력 발산 상태면 ON, 아니면 OFF
+        - 그 외 구현된 패시브(상시·조건부): 항상 ON
+        - 미구현: NONE"""
+        name = passive.get("name", "")
+        if "마력 발산" in name:
+            return "ON" if self.is_maryeok_active() else "OFF"
+        implemented = bool(passive.get("effects")) or (name in self.IMPLEMENTED_PASSIVES)
+        return "ON" if implemented else "NONE"
+
+    def target_count_bonus(self, skill):
+        """이 스킬의 공격 대상 수 보너스 (패시브 등)."""
+        bonus = 0
+        hits = skill.get("hits", 1)
+        # 나는 검이 두 자루야~: hits 3 이상 스킬의 공격 대상 +1
+        if hits >= 3 and self.has_passive("나는 검이 두 자루야~"):
+            bonus += 1
+        return bonus
 
     def on_turn_start(self, logic=None):
         """매 턴(계획 페이즈) 시작 시 발동하는 패시브 처리."""

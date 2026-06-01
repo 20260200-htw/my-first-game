@@ -28,9 +28,9 @@ ENEMY_DEFS = {
         "profile":       "assets/KL_profile.png",
         "sprite_scale":  0.3,
         "click_w_ratio": 0.2,
-        "background":    "assets/KL_T_BG.png",  # 배경 스프라이트
-        "floor":    "assets/KL_G_F.png",  # 바닥 스프라이트
-        "bgm":           "assets/knight_leader_WWE.mp3",      # 배경음악
+        "background":    "assets/KL_T_BG.png",
+        "floor":    "assets/KL_G_F.png",
+        "bgm":           "assets/knight_leader_WWE.mp3",
         "overview": [
             "벨라 트릭스",
             "",
@@ -223,8 +223,8 @@ ENEMY_DEFS = {
         "profile":       "assets/maldan_profile.png",
         "sprite_scale":  0.4,
         "click_w_ratio": 0.2,
-        "background":    "assets/battle_bg_castle.png",  # 배경 스프라이트
-        "bgm":           "assets/battle_bgm_normal.mp3", # 배경음악
+        "background":    "assets/battle_bg_castle.png",
+        "bgm":           "assets/battle_bgm_normal.mp3",
         "overview": [
             "왕국 기사단의 말단병사",
             "",
@@ -257,7 +257,7 @@ ENEMY_DEFS = {
         "profile":       "assets/slime_eat1_profile.png",
         "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
-        "background":    "assets/battle_bg_forest.png",  # 배경 스프라이트
+        "background":    "assets/battle_bg_forest.png",
         "speed_min": 2, "speed_max": 6,
         "skills": [
             {"name": "박치기", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
@@ -327,9 +327,9 @@ ENEMY_DEFS = {
         "mp_max":        5000,
         "sprite":        "assets/SSG_battle.png",
         "profile":       "assets/SSG_profile.png",
-        "floor":    "assets/SSG_battle_F.png.png",  # 바닥 스프라이트
-        "background":    "assets/SSG_battle_BG.png",  # 배경 스프라이트
-        "bgm":           "assets/SSG_battle_bgm.mp3", # 배경음악
+        "floor":    "assets/SSG_battle_F.png.png",
+        "background":    "assets/SSG_battle_BG.png",
+        "bgm":           "assets/SSG_battle_bgm.mp3",
         "sprite_scale":  0.25,
         "click_w_ratio": 0.2,
         "overview": [
@@ -390,7 +390,7 @@ ENEMY_DEFS = {
         ],
         "speed_min": 21, "speed_max": 33,
         "skills": [
-            {"name": "난무", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 5, "tags": [],
+            {"name": "난무", "power": 5, "type": "물리", "side": "적", "count": "단일", "hits": 5, "tags": [],
              "sprite": "", "motion": "stationary", "split": 3,
              "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/SSG_nanmu_target.png",
              "sound": "assets/SSG_nanmu.mp3",
@@ -399,16 +399,94 @@ ENEMY_DEFS = {
              "sprite": "", "motion": "command",
              "effect_self": "assets/SSG_command_self.png", "effect_target": "assets/SSG_command_target.png",
              "desc": ["아군 전체를 강화한다."]},
-            {"name": "쾌속 베기", "power": 50, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
+            {"name": "쾌속 베기", "power": 25, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
              "sprite": "", "motion": "behind",
              "desc": ["3회 연속 베기."]},
-             {"name": "파도 치는 검격", "power": 80, "type": "마법", "side": "적", "count": "2인", "hits": 3, "tags": [],
+             {"name": "파도 치는 검격", "power": 30, "type": "마법", "side": "적", "count": "2인", "hits": 3, "tags": [],
              "sprite": "", "motion": "cast",
              "desc": ["3회 연속 베기."]},
-             {"name": "대양의 마법", "power": 30, "type": "마법", "side": "적", "count": "5인", "hits": 3, "tags": [],
-             "sprite": "", "motion": "cast", "split": 20, #cast 모션도 split 변수로 횟수 나눠서 공격 가능하고, hit로 여러번 공격 가능하게
+             {"name": "대양의 마법", "power": 10, "type": "마법", "side": "적", "count": "5인", "hits": 5, "tags": [],
+             "sprite": "", "motion": "cast", "split": 5,
              "desc": ["파도를 부르는 마법이다."]},
-        ]    
+        ],
+    },
+    "마리나": {
+        "name":          "마리나",
+        "defense_skills": ["회피", "원호"],
+        "type":          "normal",
+        "level":         82,
+        "phys_level":    87,
+        "magic_level":   81,
+        "hp_max":        3460,
+        "mp_max":        3700,
+        "sprite":        "assets/SSG2_battle.png",
+        "profile":       "assets/SSG2_profile.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.2,
+        "overview": [
+            "마리나 루나",
+            "",
+            "엘 로마올라스의 부선장입니다.",
+            "마리 솔과는 절친한 사이로, 해적단의 주요 전투원입니다.",
+            "",
+            "단순 힘싸움으로는 그녀가 마리 솔보다 한 수 위입니다.",
+            "말을 잘 듣는 성격은 아니지만요.",
+        ],
+        "passives": [
+            {
+                "name": "엘 로마올라스의 부선장",
+                "desc": [
+                    "자신이 적에게 가하는 모든 피해가 30% 증가합니다.",
+                ],
+                "effects": [{"kind": "deal_mult", "value": 1.3}]
+            },
+            {
+                "name": "쾌검",
+                "desc": [
+                    "공격 횟수가 3 이상인 모든 스킬의 피해량이 30% 증가합니다.",
+                    "만약 이전 턴에 회피에 성공했다면 공격 횟수가 3 이상인 모든 스킬의 최종 위력이 10 증가합니다.",
+                ]
+            },
+            {
+                "name": "마력 발산 - 부선장",
+                "desc": [
+                    "'마력 발산' 상태가 되면 공격 횟수가 3 이상인 모든 스킬의 공격 횟수가 2 증가합니다.",
+                    "또한 자신의 최대 체력이 50% 이하라면 공격 횟수가 3 이상인 모든 스킬의 공격 대상이 1 증가합니다.",
+                ]
+            },
+            {
+                "name": "바다의 처형자",
+                "desc": [
+                    "자신이 공격하는 대상이 대상 최대 체력의 30% 이하라면 해당 적에게 가하는 피해량이 30% 증가합니다.",
+                ]
+            },
+            {
+                "name": "나는 검이 두 자루야~",
+                "desc": [
+                    "공격 횟수가 3 이상인 모든 스킬의 공격 대상이 1 증가합니다.",
+                ]
+            },
+        ],
+        "speed_min": 20, "speed_max": 20,
+        "skills": [
+            {"name": "난무! 내가 알려준 기술이지!", "power": 5, "type": "물리", "side": "적", "count": "단일", "hits": 5, "tags": [],
+             "sprite": "", "motion": "stationary", "split": 3,
+             "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/SSG_nanmu_target.png",
+             "sound": "assets/SSG_nanmu.mp3",
+             "desc": ["무자비한 기세로 적을 벤다."]},
+            {"name": "쾌속 베기!", "power": 25, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
+             "sprite": "", "motion": "behind",
+             "desc": ["3회 연속 베기."]},
+             {"name": "가끔은 한 방도 필요한 법이지~", "power": 100, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
+             "sprite": "", "motion": "behind",
+             "desc": ["강하게 적을 벤다."]},
+             {"name": "파도를 쳐라, 나는 너를 치겠다!", "power": 30, "type": "마법", "side": "적", "count": "1인", "hits": 3, "tags": [],
+             "sprite": "", "motion": "cast",
+             "desc": ["파도 치듯 검을 빠르게 내려친다."]},
+             {"name": "아 귀찮아~", "power": 0, "type": "물리", "side": "자신", "count": "1인", "hits": 0, "tags": [],
+             "sprite": "", "motion": "command",
+             "desc": ["마리나가 그 어떤 행동도 하지 않는다."]},
+        ]
     },
     "마리 따까리1": {
         "name":          "칼 든 선원",
@@ -439,10 +517,10 @@ ENEMY_DEFS = {
         ],
         "speed_min": 1, "speed_max": 5,
         "skills": [
-            {"name": "엉성한 난무", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
+            {"name": "엉성한 난무", "power": 3, "type": "물리", "side": "적", "count": "단일", "hits": 3, "tags": [],
              "sprite": "", "motion": "stationary", "split": 2,
              "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/SSG_nanmu_target.png",
-             "sound": "assets/SSG_nanmu.mp3", "desc": ["선장에게 배운 기술이다."]},
+             "sound": "assets/SSG_nanmu.mp3", "desc": ["부선장에게 배운 선장에게 배운 기술이다."]},
         ],
     },
     "마리 따까리2": {
@@ -478,27 +556,27 @@ ENEMY_DEFS = {
              "sprite": "", "motion": "cast",
              "effect_self": "assets/SSG_nanmu_self.png", "effect_target": "assets/gun_shot_target.png",
              "sound": "assets/gun_shot.mp3", "desc": ["총을 쏜다. 비겁하다."]},
-        ]  
+        ]
     },
-    "template": { #호출명
-        "title":         "", #이명, 보스 전용
-        "name":          "템플릿", #이름
-        "type":          "normal", #normal , boss
-        "level_min":     1, #레벨 차이가 있을 경우의 최소 레벨
-        "level_max":     100, #레벨 차이가 있을 경우의 최대 레벨
-        "hp_min":        10, #레벨별 체력 차이가 있을 경우의 최소치
-        "hp_max_range":  1000, #레벨별 체력 차이가 있을 경우의 최대치
-        "phys_min":      1, #레벨별 물리 레벨 차이가 있을 경우의 최소치
-        "phys_max":      100, #레벨별 물리 레벨 차이가 있을 경우의 최대치
-        "magic_min":     1, #레벨별 마법 레벨 차이가 있을 경우의 최소치
-        "magic_max":     100, #레벨별 마법 레벨 차이가 있을 경우의 최대치
-        "level":         1, #레벨 고정값, 레벨 차이가 있을 경우 이전에 설정한 범위 내에서 랜덤 / 레벨 차이가 없을 때 이 값을 사용
-        "phys_level":    1, #레벨과 같음
-        "magic_level":   1, #레벨과 같음
-        "hp_max":        10, #레벨과 같음
-        "sprite":        "assets/파일이름.png", #사용하는 스프라이트의 경로
-        "sprite_scale":  0.5, #전투 화면에서 그려지는 스프라이트의 크기 배율
-        "click_w_ratio": 0.2, #정보 열람 범위, 스프라이트 기준 가로폭 배율
+    "template": {
+        "title":         "",
+        "name":          "템플릿",
+        "type":          "normal",
+        "level_min":     1,
+        "level_max":     100,
+        "hp_min":        10,
+        "hp_max_range":  1000,
+        "phys_min":      1,
+        "phys_max":      100,
+        "magic_min":     1,
+        "magic_max":     100,
+        "level":         1,
+        "phys_level":    1,
+        "magic_level":   1,
+        "hp_max":        10,
+        "sprite":        "assets/파일이름.png",
+        "sprite_scale":  0.5,
+        "click_w_ratio": 0.2,
     },
 }
 

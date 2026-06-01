@@ -50,16 +50,17 @@ class BattleLogic:
         if not pool:
             return []
 
-        if count == "단일":
-            if primary_target and primary_target.hp > 0:
-                return [primary_target]
-            return [random.choice(pool)]
+        # 공격 대상 수 보너스 (패시브: 나는 검이 두 자루야~ 등). 적 대상에만 적용.
+        bonus = actor.target_count_bonus(skill) if side == "적" else 0
 
-        # 3인 / 5인: 1명 지정 + 나머지 랜덤
-        n = int(count.replace("인", ""))
+        if count == "단일":
+            n = 1 + bonus
+        else:
+            n = int(count.replace("인", "")) + bonus
         n = min(n, len(pool))
+
         chosen = []
-        if primary_target and primary_target in pool:
+        if primary_target and primary_target in pool and primary_target.hp > 0:
             chosen.append(primary_target)
         remaining = [c for c in pool if c not in chosen]
         random.shuffle(remaining)
