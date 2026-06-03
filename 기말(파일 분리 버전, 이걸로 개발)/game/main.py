@@ -27,15 +27,19 @@ import save_data
 
 
 def load_fonts(H):
-    def f(size):  return pygame.font.SysFont("malgungothic,nanumgothic,malgun gothic,gulim,sans-serif", size, bold=False)
-    def fb(size): return pygame.font.SysFont("malgungothic,nanumgothic,malgun gothic,gulim,sans-serif", size, bold=True)
+    def _f(filename, size):
+        path = os.path.join("assets", "fonts", filename)
+        try:
+            return pygame.font.Font(path, size)
+        except Exception:
+            return pygame.font.SysFont("malgungothic,nanumgothic,sans-serif", size)
     return {
-        "title":      fb(int(H * 0.08)),
-        "menu":       fb(int(H * 0.038)),
-        "hint":       f(int(H * 0.022)),
-        "hint_bold":  fb(int(H * 0.022)),
-        "small_bold": fb(int(H * 0.016)),
-        "small":      f(int(H * 0.016)),
+        "title":      _f("Paperlogy-9Black.ttf",    int(H * 0.08)),
+        "menu":       _f("Paperlogy-9Black.ttf",    int(H * 0.038)),
+        "hint":       _f("Paperlogy-6SemiBold.ttf", int(H * 0.022)),
+        "hint_bold":  _f("Paperlogy-7Bold.ttf",     int(H * 0.022)),
+        "small_bold": _f("Paperlogy-6SemiBold.ttf", int(H * 0.016)),
+        "small":      _f("Paperlogy-6SemiBold.ttf", int(H * 0.016)),
     }
 
 
@@ -283,10 +287,11 @@ def main():
                         placeholder = PlaceholderScreen(screen, W, H, fonts, f"{_t} 클리어!")
                         current = "placeholder"
 
-            elif current == "act_menu":
+            elif current == "act_menu" and act_menu_sc:
                 r = act_menu_sc.handle_event(event)
                 if r == "back":
-                    current = "story"   # ActSelectScreen으로 돌아감
+                    story_sc = ActSelectScreen(screen, W, H, fonts)  # 반드시 새로 생성
+                    current = "story"
                 elif r == "story":
                     story_sc = ChapterSelectScreen(screen, W, H, fonts, act_menu_sc.act_key)
                     current = "story"
@@ -301,26 +306,39 @@ def main():
                     placeholder = PlaceholderScreen(screen, W, H, fonts, labels[r])
                     current = "placeholder"
 
-            elif current == "growth":
+            elif current == "growth" and growth_sc:
                 r = growth_sc.handle_event(event)
                 if r == "back":
-                    current = "act_menu"
+                    if act_menu_sc is None:
+                        story_sc = ActSelectScreen(screen, W, H, fonts)
+                        current = "story"
+                    else:
+                        current = "act_menu"
 
-            elif current == "story":
+            elif current == "story" and story_sc:
                 r = story_sc.handle_event(event)
                 if r == "back":
                     # 현재 화면 종류에 따라 상위로
                     if isinstance(story_sc, StageSelectScreen):
                         story_sc = ChapterSelectScreen(screen, W, H, fonts, story_sc.act_key)
                     elif isinstance(story_sc, ChapterSelectScreen):
-                        current = "act_menu"   # 장 목록 → 막 메뉴로
+                        story_sc = None
+                        if act_menu_sc is None:
+                            story_sc = ActSelectScreen(screen, W, H, fonts)
+                            current = "story"
+                        else:
+                            current = "act_menu"
                     else:
                         story_sc = None
                         current = "gamestart"
                 elif isinstance(r, tuple):
                     if r[0] == "act":
-                        act_menu_sc = ActMenuScreen(screen, W, H, fonts, r[1])
-                        current = "act_menu"
+                        if r[1] == "0막":
+                            # 0막: 메뉴 없이 바로 장 선택
+                            story_sc = ChapterSelectScreen(screen, W, H, fonts, r[1])
+                        else:
+                            act_menu_sc = ActMenuScreen(screen, W, H, fonts, r[1])
+                            current = "act_menu"
                     elif r[0] == "chapter":
                         story_sc = StageSelectScreen(screen, W, H, fonts, r[1], r[2])
                     elif r[0] == "stage":
@@ -347,9 +365,9 @@ def main():
         elif current == "glossary" and gloss_stack:
                                         gloss_top().update(dt)
         elif current == "battle":       battle_sc.update(dt)
-        elif current == "act_menu":     act_menu_sc.update(dt)
-        elif current == "growth":        growth_sc.update(dt)
-        elif current == "story":        story_sc.update(dt)
+        elif current == "act_menu" and act_menu_sc:   act_menu_sc.update(dt)
+        elif current == "growth" and growth_sc:           growth_sc.update(dt)
+        elif current == "story" and story_sc:             story_sc.update(dt)
         elif current == "loading":
             if loading_sc.update(dt) == "done":
                 stage_data = STORY[story_ctx["act"]]["chapters"][story_ctx["chap"]]["stages"][story_ctx["stage"]]
@@ -385,9 +403,9 @@ def main():
         elif current == "glossary" and gloss_stack:
                                         gloss_top().draw()
         elif current == "battle":       battle_sc.draw()
-        elif current == "act_menu":     act_menu_sc.draw()
-        elif current == "growth":        growth_sc.draw()
-        elif current == "story":        story_sc.draw()
+        elif current == "act_menu" and act_menu_sc:   act_menu_sc.draw()
+        elif current == "growth" and growth_sc:           growth_sc.draw()
+        elif current == "story" and story_sc:             story_sc.draw()
         elif current == "loading":      loading_sc.draw()
         elif current == "dialogue":     dialogue_sc.draw()
         elif current == "placeholder":  placeholder.draw()

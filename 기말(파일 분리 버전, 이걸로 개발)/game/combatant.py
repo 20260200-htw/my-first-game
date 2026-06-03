@@ -28,6 +28,27 @@ class Combatant:
             self.magic_level = defn.get("magic_level", 0)
             self.hp_max      = defn["hp_max"]
 
+        # 주인공이면 성장 데이터로 스탯 덮어쓰기
+        if defn.get("type") == "player":
+            try:
+                import save_data as _sd
+                g = _sd.get_growth("주인공")
+                self.level       = g.get("level",       self.level)
+                self.phys_level  = g.get("phys_level",  self.phys_level)
+                self.magic_level = g.get("magic_level", self.magic_level)
+                self.hp_max      = defn["hp_max"] + g.get("hp_bonus", 0) * 10
+                self._growth_deal_pct  = g.get("deal_bonus", 0) // 5
+                self._growth_take_pct  = g.get("take_bonus", 0) // 5
+                self._growth_spd_bonus = g.get("spd_bonus", 0)
+            except Exception:
+                self._growth_deal_pct  = 0
+                self._growth_take_pct  = 0
+                self._growth_spd_bonus = 0
+        else:
+            self._growth_deal_pct  = 0
+            self._growth_take_pct  = 0
+            self._growth_spd_bonus = 0
+
         self.hp          = self.hp_max
         self.mp_max      = defn.get("mp_max", 0)
         self.mp          = self.mp_max
@@ -120,6 +141,7 @@ class Combatant:
             self.speed = random.randint(spd_min, spd_max)
         else:
             self.speed = 0
+        self.speed += getattr(self, "_growth_spd_bonus", 0) // 5
         return self.speed
 
     def _iter_effects(self):
@@ -163,7 +185,7 @@ class Combatant:
 
     def _deal_mult_total(self, target=None):
         """주는 피해 배율 곱 (deal_mult). 조건부(vs)는 대상 종족 일치 시만."""
-        mult = 1.0
+        mult = 1.0 + getattr(self, "_growth_deal_pct", 0) / 100.0
         for e in self._iter_effects():
             if e.get("kind") != "deal_mult":
                 continue
@@ -184,11 +206,11 @@ class Combatant:
 
     def _take_mult_total(self):
         """받는 피해 배율 곱 (take_mult)"""
-        mult = 1.0
+        mult = 1.0 - getattr(self, "_growth_take_pct", 0) / 100.0
         for e in self._iter_effects():
             if e.get("kind") == "take_mult":
                 mult *= e.get("value", 1.0)
-        return mult
+        return max(0.0, mult)
 
     def active_effect_labels(self):
         """현재 받고 있는 패시브 효과를 짧은 라벨 리스트로"""

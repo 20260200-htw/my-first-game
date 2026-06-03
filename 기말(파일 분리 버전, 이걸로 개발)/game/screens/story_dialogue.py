@@ -78,9 +78,13 @@ class DialogueScreen:
             pass
 
     def _load_sprite(self, path, scale):
+        """scale: story_data에서 지정한 값.
+        해상도 대응을 위해 화면 높이(H) 기준 비율로 해석한다.
+        예) scale=0.5 → 스프라이트 높이 = H * 0.5
+        캐시 키에 H를 포함해 해상도 변경 시 재생성된다."""
         if not path:
             return None
-        key = (path, round(scale, 3))
+        key = (path, round(scale, 4), self.H)
         if key in self._sprite_cache:
             return self._sprite_cache[key]
         if not os.path.exists(path):
@@ -88,9 +92,11 @@ class DialogueScreen:
             return None
         try:
             raw = pygame.image.load(path).convert_alpha()
-            w = max(1, int(raw.get_width() * scale))
-            h = max(1, int(raw.get_height() * scale))
-            img = pygame.transform.smoothscale(raw, (w, h))
+            # scale을 화면 높이 비율로 해석
+            target_h = max(1, int(self.H * scale))
+            ratio    = target_h / raw.get_height()
+            target_w = max(1, int(raw.get_width() * ratio))
+            img = pygame.transform.smoothscale(raw, (target_w, target_h))
             self._sprite_cache[key] = img
             return img
         except Exception:

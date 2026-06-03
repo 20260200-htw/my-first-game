@@ -6,166 +6,134 @@ import save_data
 from utils import *
 from data.characters_data import ALLY_DEFS
 
-# ── 색상 ──────────────────────────────────────────────────────────
-PANEL_BG   = (245, 245, 245)
-BAR_BG     = (210, 210, 210)
-BAR_EXP    = ( 80, 160, 255)
-BTN_UP     = ( 60, 180,  80)
-BTN_DN     = (200,  60,  60)
-BTN_DIS    = (180, 180, 180)   # 비활성 버튼
-DIVIDER    = (180, 180, 180)
+PANEL_BG = (245, 245, 245)
+BAR_BG   = (210, 210, 210)
+BAR_EXP  = ( 80, 160, 255)
+BTN_UP   = ( 60, 180,  80)
+BTN_DN   = (200,  60,  60)
+BTN_DIS  = (180, 180, 180)
+DIV      = (200, 200, 200)
 
 
 def _exp_to_next(level):
-    """레벨업에 필요한 총 경험치."""
     return level * 100
 
 
-def _remaining_points(g):
-    """현재 남은 포인트 = 레벨 × 1.5 − 사용량"""
-    base  = int(g["level"] * 1.5)
-    used  = (g["phys_level"]  - 1) + (g["magic_level"] - 1)
+def _left_pts(g):
+    """좌측 포인트 (물리/마법): 레벨 2부터 지급, 레벨당 2포인트"""
+    if g["level"] < 2:
+        return 0
+    base = (g["level"] - 1) * 2
+    used = (g["phys_level"] - 1) + (g["magic_level"] - 1)
+    return base - used
+
+
+def _right_pts(g):
+    """우측 포인트 (스탯): 레벨 2부터 지급, 레벨당 3포인트"""
+    if g["level"] < 2:
+        return 0
+    base = (g["level"] - 1) * 3
+    used = g["hp_bonus"] + g["spd_bonus"] + g["deal_bonus"] + g["take_bonus"]
     return base - used
 
 
 class GrowthScreen:
-    """성장 화면.
-    반환값: "back" / "skill_config" (스킬 설정, 미구현)
-    """
-
     def __init__(self, screen, W, H, fonts):
         self.screen = screen
         self.W, self.H = W, H
-        self.fonts  = fonts
-        self._profile_cache = {}
-
-        # 저장된 성장 데이터 로드
-        base = ALLY_DEFS["주인공"]
+        self.fonts = fonts
+        self._img_cache = {}
         self.g = dict(save_data.get_growth("주인공"))
-
-        # 기본값 보정 (저장 없을 때)
         for k, v in [("level",1),("exp",0),("phys_level",1),("magic_level",1),
                      ("hp_bonus",0),("spd_bonus",0),("deal_bonus",0),("take_bonus",0)]:
             self.g.setdefault(k, v)
 
-    # ── 리소스 ────────────────────────────────────────────────────
-    def _load_profile(self):
-        path = ALLY_DEFS["주인공"].get("profile", "assets/mainB_profile.png")
-        if not os.path.exists(path):
-            path = ALLY_DEFS["주인공"].get("sprite", "assets/main_character_B.png")
-        if path in self._profile_cache:
-            return self._profile_cache[path]
+    # ── 이미지 ────────────────────────────────────────────────────
+    def _img(self):
+        path = ALLY_DEFS["주인공"].get("sprite", "assets/MC/main_character_B.png")
+        if path in self._img_cache:
+            return self._img_cache[path]
         if os.path.exists(path):
             try:
                 raw = pygame.image.load(path).convert_alpha()
-                size = int(self.H * 0.28)
+                size = int(self.H * 0.40)
                 img  = pygame.transform.smoothscale(raw, (size, size))
-                self._profile_cache[path] = img
+                self._img_cache[path] = img
                 return img
             except Exception:
                 pass
         return None
 
-    # ── 파생 스탯 계산 ────────────────────────────────────────────
-    def _hp(self):
-        return ALLY_DEFS["주인공"]["hp_max"] + self.g["hp_bonus"] * 10
+    # ── 파생 스탯 ─────────────────────────────────────────────────
+    def _hp(self):     return ALLY_DEFS["주인공"]["hp_max"] + self.g["hp_bonus"] * 10
+    def _speed(self):  return ALLY_DEFS["주인공"]["speed"]  + self.g["spd_bonus"] // 5
+    def _deal(self):   return self.g["deal_bonus"] // 5
+    def _take(self):   return self.g["take_bonus"] // 5
 
-    def _speed(self):
-        return ALLY_DEFS["주인공"]["speed"] + self.g["spd_bonus"] // 5
+    # ── 버튼 Rect ─────────────────────────────────────────────────
+    def _btn(self, cx, cy, w=34, h=26):
+        return pygame.Rect(cx - w//2, cy - h//2, w, h)
 
-    def _deal_pct(self):
-        return self.g["deal_bonus"] // 5
+    def _back_rect(self):
+        return pygame.Rect(int(self.W*0.03), int(self.H*0.04), 90, 32)
 
-    def _take_pct(self):
-        return self.g["take_bonus"] // 5
-
-    # ── 버튼 Rect 빌더 ────────────────────────────────────────────
-    def _btn(self, cx, cy, w=36, h=28):
-        return pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+    def _skill_rect(self):
+        W, H = self.W, self.H
+        return pygame.Rect(int(W*0.54), int(H*0.82), int(W*0.38), 36)
 
     # ── 이벤트 ────────────────────────────────────────────────────
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                self._save()
-                return "back"
+                self._save(); return "back"
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            return self._handle_click(event.pos)
+            return self._click(event.pos)
         return None
 
-    def _handle_click(self, pos):
+    def _click(self, pos):
         W, H = self.W, self.H
         g = self.g
-        pts = _remaining_points(g)
+        lp = _left_pts(g)
+        rp = _right_pts(g)
 
-        # ── 뒤로가기 버튼 ──
         if self._back_rect().collidepoint(pos):
-            self._save()
-            return "back"
-
-        # ── 좌측 패널 버튼들 ──
-        # 물리 레벨 UP
-        r = self._btn(int(W * 0.18), int(H * 0.55))
-        if r.collidepoint(pos) and pts > 0:
-            g["phys_level"] += 1
-
-        # 물리 레벨 DOWN
-        r = self._btn(int(W * 0.30), int(H * 0.55))
-        if r.collidepoint(pos) and g["phys_level"] > 1:
-            g["phys_level"] -= 1
-
-        # 마법 레벨 UP
-        r = self._btn(int(W * 0.18), int(H * 0.65))
-        if r.collidepoint(pos) and pts > 0:
-            g["magic_level"] += 1
-
-        # 마법 레벨 DOWN
-        r = self._btn(int(W * 0.30), int(H * 0.65))
-        if r.collidepoint(pos) and g["magic_level"] > 1:
-            g["magic_level"] -= 1
-
-        # ── 우측 패널 버튼들 ──
-        rx = int(W * 0.62)
-        # 체력 UP / DOWN
-        if self._btn(rx,         int(H * 0.30)).collidepoint(pos):
-            g["hp_bonus"] += 1
-        if self._btn(rx + int(W*0.12), int(H * 0.30)).collidepoint(pos) and g["hp_bonus"] > 0:
-            g["hp_bonus"] -= 1
-
-        # 속도 UP / DOWN
-        if self._btn(rx,         int(H * 0.42)).collidepoint(pos):
-            g["spd_bonus"] += 1
-        if self._btn(rx + int(W*0.12), int(H * 0.42)).collidepoint(pos) and g["spd_bonus"] > 0:
-            g["spd_bonus"] -= 1
-
-        # 가하는 피해 UP / DOWN
-        if self._btn(rx,         int(H * 0.54)).collidepoint(pos):
-            g["deal_bonus"] += 1
-        if self._btn(rx + int(W*0.12), int(H * 0.54)).collidepoint(pos) and g["deal_bonus"] > 0:
-            g["deal_bonus"] -= 1
-
-        # 받는 피해 감소 UP / DOWN
-        if self._btn(rx,         int(H * 0.66)).collidepoint(pos):
-            g["take_bonus"] += 1
-        if self._btn(rx + int(W*0.12), int(H * 0.66)).collidepoint(pos) and g["take_bonus"] > 0:
-            g["take_bonus"] -= 1
-
-        # 스킬 설정 버튼
-        if self._skill_btn_rect().collidepoint(pos):
+            self._save(); return "back"
+        if self._skill_rect().collidepoint(pos):
             return "skill_config"
+
+        # 좌측: 물리/마법 레벨
+        rows_l = [
+            (int(H*0.72), "phys_level"),
+            (int(H*0.83), "magic_level"),
+        ]
+        up_x  = int(W*0.30)
+        dn_x  = int(W*0.40)
+        for cy, key in rows_l:
+            if self._btn(up_x, cy).collidepoint(pos) and lp > 0:
+                g[key] += 1
+            if self._btn(dn_x, cy).collidepoint(pos) and g[key] > 1:
+                g[key] -= 1
+
+        # 우측: 스탯
+        rows_r = [
+            (int(H*0.28), "hp_bonus"),
+            (int(H*0.42), "spd_bonus"),
+            (int(H*0.56), "deal_bonus"),
+            (int(H*0.70), "take_bonus"),
+        ]
+        up_rx = int(W*0.76)
+        dn_rx = int(W*0.86)
+        for cy, key in rows_r:
+            if self._btn(up_rx, cy).collidepoint(pos) and rp > 0:
+                g[key] += 1
+            if self._btn(dn_rx, cy).collidepoint(pos) and g[key] > 0:
+                g[key] -= 1
 
         self._save()
         return None
 
     def _save(self):
         save_data.set_growth(self.g, "주인공")
-
-    def _back_rect(self):
-        return pygame.Rect(int(self.W * 0.03), int(self.H * 0.04), 100, 34)
-
-    def _skill_btn_rect(self):
-        W, H = self.W, self.H
-        return pygame.Rect(int(W * 0.55), int(H * 0.78), int(W * 0.30), 38)
 
     def update(self, dt): pass
 
@@ -174,11 +142,12 @@ class GrowthScreen:
         W, H = self.W, self.H
         surf  = self.screen
         g     = self.g
-        pts   = _remaining_points(g)
+        lp    = _left_pts(g)
+        rp    = _right_pts(g)
         surf.fill(WHITE)
 
         # 제목
-        draw_text(surf, "성장", self.fonts["title"], BLACK, W // 2, int(H * 0.07))
+        draw_text(surf, "성장", self.fonts["title"], BLACK, W//2, int(H*0.07))
 
         # 뒤로가기
         br = self._back_rect()
@@ -186,87 +155,85 @@ class GrowthScreen:
         draw_text(surf, "◀ 뒤로", self.fonts["hint"], BLACK, br.centerx, br.centery)
 
         # 중앙 구분선
-        pygame.draw.line(surf, DIVIDER, (W // 2, int(H * 0.14)), (W // 2, int(H * 0.90)), 1)
+        pygame.draw.line(surf, DIV, (W//2, int(H*0.13)), (W//2, int(H*0.92)), 1)
 
-        # ══ 좌측 패널 ═══════════════════════════════════════════
-        lx = int(W * 0.25)   # 좌측 중심 X
-
-        # 프로필 이미지
-        img = self._load_profile()
-        img_size = int(H * 0.28)
-        img_rect = pygame.Rect(lx - img_size // 2, int(H * 0.15), img_size, img_size)
+        # ══ 좌측 ════════════════════════════════════════════════
+        lx   = int(W*0.25)
+        img  = self._img()
+        isz  = int(H*0.40)
+        ir   = pygame.Rect(lx - isz//2, int(H*0.13), isz, isz)
         if img:
-            surf.blit(img, img_rect)
+            surf.blit(img, ir)
         else:
-            pygame.draw.rect(surf, PANEL_BG, img_rect)
-            pygame.draw.rect(surf, GRAY,     img_rect, 2)
-            draw_text(surf, "주인공", self.fonts["menu"], GRAY_D, img_rect.centerx, img_rect.centery)
+            pygame.draw.rect(surf, PANEL_BG, ir)
+            pygame.draw.rect(surf, DIV, ir, 2)
 
         # 레벨
-        lv_y = int(H * 0.48)
+        lv_y = int(H*0.57)
         draw_text(surf, f"Lv. {g['level']}", self.fonts["menu"], BLACK, lx, lv_y)
 
         # 경험치 바
-        exp_y  = int(H * 0.535)
-        bar_w  = int(W * 0.38)
-        bar_h  = 14
-        bar_x  = lx - bar_w // 2
-        need   = _exp_to_next(g["level"])
-        ratio  = min(1.0, g["exp"] / need) if need > 0 else 0
-        pygame.draw.rect(surf, BAR_BG,  (bar_x, exp_y, bar_w, bar_h), border_radius=4)
+        exp_y = int(H*0.625)
+        bw    = int(W*0.36)
+        bh    = 12
+        bx    = lx - bw//2
+        need  = _exp_to_next(g["level"])
+        ratio = min(1.0, g["exp"]/need) if need else 0
+        pygame.draw.rect(surf, BAR_BG, (bx, exp_y, bw, bh), border_radius=3)
         if ratio > 0:
-            pygame.draw.rect(surf, BAR_EXP, (bar_x, exp_y, int(bar_w * ratio), bar_h), border_radius=4)
-        pygame.draw.rect(surf, GRAY,    (bar_x, exp_y, bar_w, bar_h), 1, border_radius=4)
-        draw_text(surf, f"EXP  {g['exp']} / {need}", self.fonts["hint"], GRAY_D, lx, exp_y + bar_h + 12)
+            pygame.draw.rect(surf, BAR_EXP, (bx, exp_y, int(bw*ratio), bh), border_radius=3)
+        pygame.draw.rect(surf, DIV, (bx, exp_y, bw, bh), 1, border_radius=3)
+        draw_text(surf, f"EXP {g['exp']} / {need}", self.fonts["hint"], GRAY_D, lx, exp_y+bh+11)
 
-        # 남은 포인트
-        draw_text(surf, f"남은 포인트:  {pts}", self.fonts["menu"],
-                  (180, 40, 40) if pts == 0 else BLACK, lx, int(H * 0.615))
+        # 남은 포인트 (좌측)
+        pt_col = (180,40,40) if lp == 0 else (30,130,60)
+        draw_text(surf, f"남은 포인트  {lp}", self.fonts["hint"], pt_col, lx, int(H*0.685))
 
-        # 물리 레벨
-        phy_y = int(H * 0.70)
-        draw_text_left(surf, "물리 레벨", self.fonts["hint"], BLACK, int(W * 0.08), phy_y)
-        draw_text(surf, str(g["phys_level"]), self.fonts["menu"], BLACK, int(W * 0.24), phy_y)
-        self._draw_updown(surf, int(W * 0.18), int(W * 0.30), phy_y,
-                          pts > 0, g["phys_level"] > 1)
-
-        # 마법 레벨
-        mag_y = int(H * 0.80)
-        draw_text_left(surf, "마법 레벨", self.fonts["hint"], BLACK, int(W * 0.08), mag_y)
-        draw_text(surf, str(g["magic_level"]), self.fonts["menu"], BLACK, int(W * 0.24), mag_y)
-        self._draw_updown(surf, int(W * 0.18), int(W * 0.30), mag_y,
-                          pts > 0, g["magic_level"] > 1)
-
-        # ══ 우측 패널 ═══════════════════════════════════════════
-        rx  = int(W * 0.62)   # 업 버튼 X
-        rx2 = rx + int(W * 0.12)  # 다운 버튼 X
-        label_x = int(W * 0.53)
-        val_x   = int(W * 0.80)
-
-        rows = [
-            (int(H * 0.30), "체력",          f"{self._hp():,}",         "hp_bonus",   True),
-            (int(H * 0.42), "속도",          str(self._speed()),         "spd_bonus",  True),
-            (int(H * 0.54), "가하는 피해",   f"+{self._deal_pct()}%",    "deal_bonus", True),
-            (int(H * 0.66), "받는 피해 감소",f"-{self._take_pct()}%",    "take_bonus", True),
+        # 물리 / 마법 레벨
+        rows_l = [
+            (int(H*0.72), "물리 레벨", "phys_level"),
+            (int(H*0.83), "마법 레벨", "magic_level"),
         ]
-        cost_hints = ["(1당 HP +10)", "(5당 속도 +1)", "(5당 +1%)", "(5당 +1%)"]
+        lbl_x = int(W*0.07)
+        val_x = int(W*0.35)
+        up_x  = int(W*0.30)
+        dn_x  = int(W*0.40)
+        for cy, lbl, key in rows_l:
+            draw_text_left(surf, lbl, self.fonts["hint"], BLACK, lbl_x, cy)
+            draw_text(surf, str(g[key]), self.fonts["menu"], BLACK, val_x, cy)
+            self._updown(surf, up_x, dn_x, cy, lp > 0, g[key] > 1)
 
-        for (cy, label, val, key, _), hint in zip(rows, cost_hints):
-            draw_text_left(surf, label, self.fonts["menu"], BLACK, label_x, cy)
-            draw_text_left(surf, hint,  self.fonts["hint"], GRAY_D, label_x, cy + int(H * 0.038))
-            draw_text(surf, val, self.fonts["menu"], BLACK, val_x, cy)
-            self._draw_updown(surf, rx, rx2, cy, True, g[key] > 0)
+        # ══ 우측 ════════════════════════════════════════════════
+        lbl_rx = int(W*0.53)
+        val_rx = int(W*0.93)
+        up_rx  = int(W*0.76)
+        dn_rx  = int(W*0.86)
 
-        # 스킬 설정 버튼
-        sr = self._skill_btn_rect()
-        pygame.draw.rect(surf, PANEL_BG, sr, border_radius=6)
-        pygame.draw.rect(surf, GRAY,     sr, 1, border_radius=6)
+        # 남은 포인트 (우측)
+        rpt_col = (180,40,40) if rp == 0 else (30,130,60)
+        draw_text(surf, f"남은 포인트  {rp}", self.fonts["hint"], rpt_col, int(W*0.73), int(H*0.17))
+
+        rows_r = [
+            (int(H*0.28), "체력",          f"{self._hp():,}",    "hp_bonus",   "(1당 HP +10)"),
+            (int(H*0.42), "속도",          str(self._speed()),   "spd_bonus",  "(5당 +1)"),
+            (int(H*0.56), "가하는 피해",   f"+{self._deal()}%",  "deal_bonus", "(5당 +1%)"),
+            (int(H*0.70), "받는 피해 감소",f"-{self._take()}%",  "take_bonus", "(5당 +1%)"),
+        ]
+        for cy, lbl, val, key, hint in rows_r:
+            draw_text_left(surf, lbl,  self.fonts["menu"], BLACK,  lbl_rx, cy)
+            draw_text_left(surf, hint, self.fonts["hint"], GRAY_D, lbl_rx, cy+int(H*0.038))
+            draw_text(surf, val, self.fonts["menu"], BLACK, val_rx, cy)
+            self._updown(surf, up_rx, dn_rx, cy, rp > 0, g[key] > 0)
+
+        # 스킬 설정
+        sr = self._skill_rect()
+        pygame.draw.rect(surf, PANEL_BG, sr, border_radius=5)
+        pygame.draw.rect(surf, DIV,      sr, 1, border_radius=5)
         draw_text(surf, "스킬  [설정]  (미구현)", self.fonts["menu"], GRAY_D, sr.centerx, sr.centery)
 
-    def _draw_updown(self, surf, up_cx, dn_cx, cy, can_up, can_dn):
-        """▲ / ▼ 버튼 그리기."""
-        for cx, label, active in [(up_cx, "▲", can_up), (dn_cx, "▼", can_dn)]:
+    def _updown(self, surf, up_cx, dn_cx, cy, can_up, can_dn):
+        for cx, lbl, active in [(up_cx,"▲",can_up),(dn_cx,"▼",can_dn)]:
             r   = self._btn(cx, cy)
-            col = BTN_UP if (active and label == "▲") else BTN_DN if active else BTN_DIS
-            pygame.draw.rect(surf, col, r, border_radius=4)
-            draw_text(surf, label, self.fonts["hint"], WHITE, r.centerx, r.centery)
+            col = BTN_UP if (active and lbl=="▲") else BTN_DN if (active and lbl=="▼") else BTN_DIS
+            pygame.draw.rect(surf, col, r, border_radius=3)
+            draw_text(surf, lbl, self.fonts["hint"], WHITE, r.centerx, r.centery)

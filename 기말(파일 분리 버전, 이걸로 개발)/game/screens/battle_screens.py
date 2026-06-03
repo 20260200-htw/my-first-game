@@ -32,6 +32,13 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
     STATE_ANIM   = "anim"
     STATE_ROLL   = "roll"
     STATE_OVER   = "over"
+    STATE_EXEC_INTRO = "exec_intro"  # 실행 직전: 레터박스만 올라오고 대기(로딩)
+    STATE_TURN_END   = "turn_end"    # 턴 종료: 페이드아웃 → n턴 종료 → 페이드인
+
+    # 연출 타이밍(ms)
+    EXEC_INTRO_HOLD  = 350   # 레터박스 올라온 뒤 대기 시간
+    TURN_END_FADE    = 250   # 페이드 인/아웃 각각 시간
+    TURN_END_HOLD    = 500   # "n턴 종료" 표시 유지 시간
     TAB_NAMES = ["개요", "스킬", "패시브"]
     def __init__(self, screen, W, H, fonts, enemies, allies, enemy_formation="솔캐리_전방", ally_formation="트리오", gap=0.12):
         self.screen  = screen
@@ -127,7 +134,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         # ── 카메라 ────────────────────────────────────────────────
         self.cam_x    = 0.0
         self.cam_y    = 0.0
-        self.zoom     = 1.0
+        self.zoom     = self.ZOOM_MIN   # 전투 시작 시 최대 축소 상태
         self.dragging = False
         self.drag_start_mouse = (0, 0)
         self.drag_start_cam   = (0.0, 0.0)
@@ -182,6 +189,11 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self.total_show    = False
         self.roll = None   # {actor,skill,primary,targets,timer,final_power,display}
         self._lb_ratio = 0.0   # 레터박스 펼침 비율 (실행 페이즈 동안 1 유지)
+        self._exec_intro_timer = 0.0   # 실행 인트로 대기 타이머
+        self._turn_end_timer   = 0.0   # 턴 종료 연출 타이머
+        self._turn_end_phase   = None  # "out" / "hold" / "in"
+        self._turn_end_label   = ""    # 표시할 "n턴 종료" 문구
+        self._was_executing    = False # 실행 페이즈 진행 중이었는지(턴 종료 감지용)
         self.anim_actor_offset = {}  # {combatant: (dx, dy)} 모션 중 위치 보정
 
         # 첫 룰렛 렉 방지: 모든 스킬 리소스 미리 로드
@@ -601,6 +613,11 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             self.state = self.STATE_OVER
             return
         if not self.logic.is_planning_done():
+            # 실행 중이었다가 계획 단계로 돌아왔다면 = 한 턴이 끝난 것
+            if getattr(self, "_was_executing", False):
+                self._was_executing = False
+                self._begin_turn_end(self.logic.turn_count - 1)
+                return
             # 계획 단계: 현재 계획 받을 아군에게 메뉴 표시
             actor = self.logic.planning_actor()
             if actor is None:
@@ -609,8 +626,20 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             self.menu_selected = 0
             self.current_actor = actor
         else:
+            self._was_executing = True
             # 실행 단계: 현재 행동자의 예약 행동 실행
             self._exec_next()
+
+    def _begin_turn_end(self, turn_no):
+        """턴 종료 연출 시작: 페이드아웃 → 'n턴 종료' → 페이드인"""
+        self.state = self.STATE_TURN_END
+        self._turn_end_phase = "out"
+        self._turn_end_timer = 0.0
+        self._turn_end_label = f"{turn_no}턴 종료"
+        self.zoom = self.ZOOM_MIN   # 턴 종료 시 최대 축소
+        self.roll = None
+        self.anim = None
+        self._clear_total()
     def _exec_next(self):
         """실행 단계: 현재 행동자의 예약 행동을 실행"""
         if self.logic.battle_over:
@@ -729,22 +758,58 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
     def _after_plan_step(self):
         """계획 한 단계 끝난 뒤: 다음 아군 메뉴 or 실행 시작"""
         if self.logic.is_planning_done():
-            # 전원 계획 완료 → 실행 시작
-            self._sync_turn()
+            # 전원 계획 완료 → 실행 인트로(레터박스만 올라오고 대기)
+            self.state = self.STATE_EXEC_INTRO
+            self._exec_intro_timer = 0.0
+            self.zoom = self.ZOOM_MIN   # 실행 시작은 최대 축소
         else:
             # 다음 아군 계획
             self.state = self.STATE_MENU
             self.menu_selected = 0
             self.current_actor = self.logic.planning_actor()
     def update(self, dt):
-        # 레터박스: 실행 페이즈 동안 펼침(1), 그 외 접힘(0) — 슬라이드 보간
-        in_exec = self.logic.is_planning_done() and not self.logic.battle_over
+        # 레터박스: 실행 페이즈/인트로/턴종료 동안 펼침(1), 그 외 접힘(0)
+        in_exec = (self.logic.is_planning_done() and not self.logic.battle_over) \
+                  or self.state in (self.STATE_EXEC_INTRO, self.STATE_TURN_END)
         target_lb = 1.0 if in_exec else 0.0
         step = dt / self.LETTERBOX_SLIDE
         if self._lb_ratio < target_lb:
             self._lb_ratio = min(target_lb, self._lb_ratio + step)
         elif self._lb_ratio > target_lb:
             self._lb_ratio = max(target_lb, self._lb_ratio - step)
+
+        # ── 실행 인트로: 레터박스 다 올라오고 대기 후 첫 행동 시작 ──
+        if self.state == self.STATE_EXEC_INTRO:
+            self._exec_intro_timer += dt
+            # 레터박스가 충분히 올라오고 대기시간 경과하면 실행 시작
+            if self._lb_ratio >= 1.0 and self._exec_intro_timer >= self.EXEC_INTRO_HOLD:
+                self._was_executing = True
+                self._exec_next()
+            return
+
+        # ── 턴 종료 연출: 페이드아웃 → n턴 종료 → 페이드인 ──
+        if self.state == self.STATE_TURN_END:
+            self._turn_end_timer += dt
+            if self._turn_end_phase == "out":
+                if self._turn_end_timer >= self.TURN_END_FADE:
+                    self._turn_end_phase = "hold"
+                    self._turn_end_timer = 0.0
+            elif self._turn_end_phase == "hold":
+                if self._turn_end_timer >= self.TURN_END_HOLD:
+                    self._turn_end_phase = "in"
+                    self._turn_end_timer = 0.0
+            elif self._turn_end_phase == "in":
+                if self._turn_end_timer >= self.TURN_END_FADE:
+                    # 연출 종료 → 다음 턴 계획 화면으로
+                    self._turn_end_phase = None
+                    actor = self.logic.planning_actor()
+                    if actor is not None:
+                        self.state = self.STATE_MENU
+                        self.menu_selected = 0
+                        self.current_actor = actor
+                    else:
+                        self._sync_turn()
+            return
 
         # 쉐이크 감쇠
         if self.shake_timer > 0:

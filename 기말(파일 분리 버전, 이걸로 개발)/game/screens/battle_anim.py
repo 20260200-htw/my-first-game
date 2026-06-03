@@ -438,6 +438,23 @@ class BattleAnimMixin:
         bar.fill((0, 0, 0, 220))
         surf.blit(bar, (0, 0))
         surf.blit(bar, (0, H - bar_h))
+
+        # 상단 레터박스에 스킬명 표시 (아군=좌, 적군=우)
+        # 위력 룰렛(roll) 단계부터 표시되도록 anim/roll 양쪽에서 가져옴
+        src = self.anim if (self.anim and self.anim.get("skill")) else self.roll
+        if src and src.get("skill"):
+            actor   = src.get("actor")
+            skill   = src["skill"]
+            name    = skill.get("name", "")
+            is_ally = actor in self.allies
+            margin  = int(W * 0.03)
+            cy      = bar_h // 2
+            font    = self.fonts["title"]
+            if is_ally:
+                draw_text_left(surf, name, font, WHITE, margin, cy)
+            else:
+                nm_w = font.size(name)[0]
+                draw_text_left(surf, name, font, WHITE, W - margin - nm_w, cy)
     def _draw_text_outlined(self, text, font, color, outline, cx, cy, alpha=255):
         """검은 테두리가 있는 텍스트를 중앙(cx,cy)에 그림"""
         base = font.render(text, True, color)

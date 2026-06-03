@@ -49,7 +49,11 @@ class _CardSelectScreen:
 
     def _snap_to(self, idx):
         n = len(self.items)
-        self.selected = max(0, min(n - 1, idx))
+        idx = max(0, min(n - 1, idx))
+        # 잠긴 항목은 건너뜀
+        if self._is_locked(self.items[idx][0]):
+            return
+        self.selected = idx
         self._target_x = self._target_for(self.selected)
 
     def _card_rect(self, idx):
@@ -152,42 +156,48 @@ class _CardSelectScreen:
         cw, ch = self._cw(), self._ch()
 
         for i, (key, label, img_path) in enumerate(self.items):
+            # 잠긴 항목은 표시하지 않음
+            if self._is_locked(key):
+                continue
             r = self._card_rect(i)
             if r.right < 0 or r.left > W:
                 continue
 
-            locked = self._is_locked(key)
             img = self._load_img(img_path, (r.width, r.height))
-            if locked:
-                # 잠긴 카드: 어두운 회색 + 자물쇠
-                pygame.draw.rect(surf, (160, 160, 160), r, border_radius=6)
-                draw_text(surf, "🔒", self.fonts["menu"], (80, 80, 80), r.centerx, r.centery)
-            elif img:
+            if img:
                 surf.blit(img, r)
             else:
                 pygame.draw.rect(surf, (235, 235, 235), r, border_radius=6)
-                draw_text(surf, label, self.fonts["menu"], BLACK, r.centerx, r.centery)
+                # 라벨을 두 줄로: 첫 단어(막/장 번호) 위, 나머지 아래
+                parts = label.split(" ", 1)
+                if len(parts) == 2:
+                    draw_text(surf, parts[0], self.fonts["menu"], BLACK, r.centerx, r.centery - int(self.H*0.03))
+                    draw_text(surf, parts[1], self.fonts["hint"], BLACK, r.centerx, r.centery + int(self.H*0.03))
+                else:
+                    draw_text(surf, label, self.fonts["menu"], BLACK, r.centerx, r.centery)
 
             border = 4 if i == self.selected else 1
-            col = (120, 120, 120) if locked else BLACK
-            pygame.draw.rect(surf, col, r, border, border_radius=6)
+            pygame.draw.rect(surf, BLACK, r, border, border_radius=6)
 
-        # 좌우 화살표
+        # 좌우 화살표 (잠긴 항목 제외 기준)
         cy = int(H * self.CENTER_Y)
         margin = int(W * 0.025)
-        if self.selected > 0:
+        has_prev = any(not self._is_locked(self.items[i][0]) for i in range(self.selected))
+        has_next = any(not self._is_locked(self.items[i][0]) for i in range(self.selected+1, n))
+        if has_prev:
             draw_text(surf, "◀", self.fonts["menu"], GRAY_D, margin, cy)
-        if self.selected < n - 1:
+        if has_next:
             draw_text(surf, "▶", self.fonts["menu"], GRAY_D, W - margin, cy)
 
-        # 하단 도트 인디케이터
+        # 하단 도트 인디케이터 (잠긴 항목 제외)
+        visible = [i for i in range(n) if not self._is_locked(self.items[i][0])]
         dot_y = int(H * 0.87)
         dr = max(4, int(W * 0.005))
         dg = dr * 3
-        dot_x0 = W // 2 - (n * dg - dg) // 2
-        for i in range(n):
+        dot_x0 = W // 2 - (len(visible) * dg - dg) // 2
+        for di, i in enumerate(visible):
             col = BLACK if i == self.selected else GRAY
-            pygame.draw.circle(surf, col, (dot_x0 + i * dg, dot_y), dr)
+            pygame.draw.circle(surf, col, (dot_x0 + di * dg, dot_y), dr)
 
         pass  # 키 가이드 없음
 

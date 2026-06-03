@@ -47,10 +47,10 @@ def _default_save():
                 "exp":         0,
                 "phys_level":  1,
                 "magic_level": 1,
-                "hp_bonus":    0,      # 체력 보너스 (10씩 증가)
-                "spd_bonus":   0,      # 속도 보너스 포인트 (5당 속도 1)
-                "deal_bonus":  0,      # 가하는 피해 증가 포인트 (5당 1%)
-                "take_bonus":  0,      # 받는 피해 감소 포인트 (5당 1%)
+                "hp_bonus":    0,
+                "spd_bonus":   0,
+                "deal_bonus":  0,
+                "take_bonus":  0,
             }
         }
     }

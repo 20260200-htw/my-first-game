@@ -427,7 +427,7 @@ class BattleDrawMixin:
                 # 설명 (최대 2줄)
                 dy = iy + int(H * 0.072)
                 for line in sk.get("desc", [])[:3]:
-                    draw_text_left(surf, line, self.fonts["small_bold"], BLACK, ix, dy)
+                    draw_text_left(surf, line, self.fonts["small"], BLACK, ix, dy)
                     dy += int(H * 0.028)
 
         # ── 수비 스킬 선택 창 ─────────────────────────────────────
@@ -466,7 +466,7 @@ class BattleDrawMixin:
                 draw_text_left(surf, line2, self.fonts["small_bold"], GRAY_D, ix, iy + int(H * 0.045))
                 dy = iy + int(H * 0.072)
                 for line in sk.get("desc", [])[:3]:
-                    draw_text_left(surf, line, self.fonts["small_bold"], BLACK, ix, dy)
+                    draw_text_left(surf, line, self.fonts["small"], BLACK, ix, dy)
                     dy += int(H * 0.028)
 
         # ── 대상 선택 창 ──────────────────────────────────────────
@@ -571,6 +571,40 @@ class BattleDrawMixin:
         c = self._inspect_target()
         if c is not None:
             self._draw_inspect_overlay(c)
+
+        # ── 턴 종료 연출 (검은 페이드 + 중앙 'n턴 종료') ───────────
+        if self.state == self.STATE_TURN_END:
+            self._draw_turn_end_overlay()
+
+    def _draw_turn_end_overlay(self):
+        """페이드아웃 → n턴 종료 표시 → 페이드인. 알파는 phase/timer로 계산."""
+        W, H = self.W, self.H
+        surf = self.screen
+        phase = self._turn_end_phase
+        t     = self._turn_end_timer
+
+        if phase == "out":
+            alpha = int(255 * min(1.0, t / self.TURN_END_FADE))
+        elif phase == "hold":
+            alpha = 255
+        elif phase == "in":
+            alpha = int(255 * max(0.0, 1.0 - t / self.TURN_END_FADE))
+        else:
+            alpha = 255
+
+        veil = pygame.Surface((W, H), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, alpha))
+        surf.blit(veil, (0, 0))
+
+        # 텍스트는 화면이 충분히 어두울 때만 (hold 중심) 표시
+        if alpha > 120 and self._turn_end_label:
+            txt_alpha = min(255, int((alpha - 120) / 135 * 255)) if alpha < 255 else 255
+            img = self.fonts["title"].render(self._turn_end_label, True, (255, 255, 255))
+            if txt_alpha < 255:
+                img = img.copy(); img.set_alpha(txt_alpha)
+            rect = img.get_rect(center=(W // 2, H // 2))
+            surf.blit(img, rect)
+
     def _draw_turn_order(self):
         """좌측 상단 행동 서열 UI (현재 행동자부터 최대 3개 + 턴 종료)"""
         if self.state == self.STATE_OVER:
@@ -873,7 +907,7 @@ class BattleDrawMixin:
                     desc_y = name_y + int(H * 0.033) + int(H * 0.035)
                     for line in skill["desc"]:
                         if content_rect.top <= desc_y <= content_rect.bottom:
-                            draw_text_left_underline(surf, line, self.fonts["small_bold"], BLACK, info_x, desc_y)
+                            draw_text_left_underline(surf, line, self.fonts["small"], BLACK, info_x, desc_y)
                         desc_y += gap_line
 
                     block_h = max(icon_size, int(icon_size * 0.2) + int(H * 0.033) + int(H * 0.035) + len(skill["desc"]) * gap_line)
@@ -916,7 +950,7 @@ class BattleDrawMixin:
                             if line == "":
                                 ty += gap_desc // 2
                                 continue
-                            rects = draw_text_left_underline(surf, line, self.fonts["small_bold"], BLACK, tx, ty + gap_desc // 2)
+                            rects = draw_text_left_underline(surf, line, self.fonts["small"], BLACK, tx, ty + gap_desc // 2)
                             for r, word in rects:
                                 self._underline_rects.append((r, word, c))
                         ty += gap_desc
