@@ -6,7 +6,7 @@ from utils import *
 #   타이틀 화면
 # ══════════════════════════════════════════════════════════════════
 class TitleScreen:
-    ITEMS = ["게임 시작", "아카이브", "설정", "게임 종료"]
+    ITEMS = ["게임 시작", "아카이브", "설정", "데이터 초기화", "게임 종료"]
 
     def __init__(self, screen, W, H, fonts):
         self.screen = screen
@@ -44,7 +44,7 @@ class TitleScreen:
         return None
 
     def _action(self):
-        return ["start", "gallery", "settings", "quit"][self.selected]
+        return ["start", "gallery", "settings", "reset", "quit"][self.selected]
 
     def update(self, dt): pass
 
@@ -77,7 +77,7 @@ class TitleScreen:
 #   게임 시작 화면
 # ══════════════════════════════════════════════════════════════════
 class GameStartScreen:
-    ITEMS = ["스토리", "탐험", "돌아가기"]
+    ITEMS = ["스토리", "돌아가기"]
 
     def __init__(self, screen, W, H, fonts):
         self.screen = screen
@@ -114,7 +114,7 @@ class GameStartScreen:
         return None
 
     def _action(self):
-        return ["story", "explore", "back"][self.selected]
+        return ["story", "back"][self.selected]
 
     def update(self, dt): pass
 
@@ -715,73 +715,283 @@ class QuitDialog:
 
 
 # ══════════════════════════════════════════════════════════════════
+#   데이터 초기화 확인 다이얼로그 (5번 연속 확인)
+# ══════════════════════════════════════════════════════════════════
+class ResetConfirmDialog:
+    """데이터 초기화 전 5번 연속으로 확인하는 다이얼로그.
+    단계마다 메시지가 바뀌고, 5번째에 '예'를 눌러야 초기화 실행.
+    handle_event 반환값: "done"(초기화 완료) | "cancel" | None"""
+
+    _MESSAGES = [
+        "정말 데이터를 초기화하시겠습니까?",
+        "진짜요? 모든 진행 상황이 삭제됩니다.",
+        "되돌릴 수 없습니다. 정말 계속하시겠습니까?",
+        "마지막 경고입니다. 계속하시겠습니까?",
+        "최종 확인: 데이터를 초기화합니다.",
+    ]
+
+    def __init__(self, screen, W, H, fonts):
+        self.screen  = screen
+        self.W, self.H = W, H
+        self.fonts   = fonts
+        self.step    = 0   # 0~4
+        self.selected = 1  # 0=예, 1=아니오 (기본: 아니오)
+
+    def _btn_rects(self):
+        W, H = self.W, self.H
+        dw = int(W * 0.38)
+        dh = int(H * 0.22)
+        dx = (W - dw) // 2
+        dy = (H - dh) // 2
+        bw = int(dw * 0.28)
+        bh = int(dh * 0.30)
+        gap = int(dw * 0.06)
+        by = dy + dh - bh - int(dh * 0.12)
+        return [
+            pygame.Rect(W // 2 - bw - gap, by, bw, bh),  # 예
+            pygame.Rect(W // 2 + gap,      by, bw, bh),  # 아니오
+        ]
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_a, pygame.K_d):
+                self.selected ^= 1
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                return self._confirm(self.selected == 0)
+            elif event.key == pygame.K_ESCAPE:
+                return "cancel"
+        elif event.type == pygame.MOUSEMOTION:
+            for i, r in enumerate(self._btn_rects()):
+                if r.collidepoint(event.pos):
+                    self.selected = i
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for i, r in enumerate(self._btn_rects()):
+                if r.collidepoint(event.pos):
+                    return self._confirm(i == 0)
+        return None
+
+    def _confirm(self, yes):
+        if not yes:
+            return "cancel"
+        self.step += 1
+        self.selected = 1  # 다음 단계마다 '아니오'로 리셋
+        if self.step >= len(self._MESSAGES):
+            import save_data
+            save_data.reset()
+            return "done"
+        return None  # 다음 단계로
+
+    def update(self, dt): pass
+
+    def draw(self):
+        W, H = self.W, self.H
+        surf  = self.screen
+
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 140))
+        surf.blit(dim, (0, 0))
+
+        dw = int(W * 0.38)
+        dh = int(H * 0.22)
+        dx, dy = (W - dw) // 2, (H - dh) // 2
+        pygame.draw.rect(surf, WHITE, (dx, dy, dw, dh), border_radius=8)
+        pygame.draw.rect(surf, (180, 40, 40), (dx, dy, dw, dh), 2, border_radius=8)
+
+        # 단계 표시
+        step_txt = f"({self.step + 1} / {len(self._MESSAGES)})"
+        draw_text(surf, step_txt, self.fonts["hint"], GRAY_D, W // 2, dy + int(dh * 0.18))
+        draw_text(surf, self._MESSAGES[self.step], self.fonts["menu"], BLACK,
+                  W // 2, dy + int(dh * 0.45))
+
+        for i, (r, label) in enumerate(zip(self._btn_rects(), ["예", "아니오"])):
+            if i == self.selected:
+                bg = (180, 40, 40) if i == 0 else BLACK
+                pygame.draw.rect(surf, bg, r, border_radius=4)
+                draw_text(surf, label, self.fonts["menu"], WHITE, r.centerx, r.centery)
+            else:
+                pygame.draw.rect(surf, WHITE, r, border_radius=4)
+                pygame.draw.rect(surf, BLACK, r, 1, border_radius=4)
+                draw_text(surf, label, self.fonts["menu"], BLACK, r.centerx, r.centery)
+
+
+# ══════════════════════════════════════════════════════════════════
 #   폰트
 # ══════════════════════════════════════════════════════════════════
 
 # ══════════════════════════════════════════════════════════════════
-#   전투 선택 화면
+#   전투 선택 화면  (가로 일자 나열 + 드래그/방향키 이동)
 # ══════════════════════════════════════════════════════════════════
 class BattleSelectScreen:
+    """스테이지를 가로 일렬로 배치하고 마우스 좌클릭 드래그 또는
+    좌우 방향키로 1칸씩 이동, Enter/더블클릭으로 선택하는 화면."""
+
+    # 카드 크기·간격 (화면 비율)
+    _CARD_W_RATIO  = 0.18   # 카드 너비
+    _CARD_H_RATIO  = 0.28   # 카드 높이
+    _GAP_RATIO     = 0.03   # 카드 사이 간격
+    _CENTER_Y      = 0.50   # 카드 중심 Y (화면 비율)
+
+    # 드래그 판정 임계값(px): 이 이상 움직여야 드래그로 간주
+    _DRAG_THRESHOLD = 8
+
     def __init__(self, screen, W, H, fonts):
         self.screen = screen
         self.W, self.H = W, H
         self.fonts = fonts
         from data.battle_presets import BATTLE_PRESETS
         self.presets = list(BATTLE_PRESETS.items())
-        self.selected = 0
-        self.scroll = 0
+        self.selected = 0           # 현재 포커스 인덱스
 
+        # 스크롤: 중심 카드의 X 오프셋 (픽셀, 애니메이션용)
+        self._scroll_x   = 0.0     # 현재 렌더 오프셋
+        self._target_x   = 0.0     # 목표 오프셋 (키/드래그 후 설정)
+        self._anim_speed = 12.0    # lerp 속도 (초당 배율)
+
+        # 드래그 상태
+        self._drag_active  = False
+        self._drag_start_x = 0
+        self._drag_origin  = 0.0   # 드래그 시작 시점의 _scroll_x
+
+    # ── 내부 계산 ──────────────────────────────────────────────────
+    def _card_w(self):  return int(self.W * self._CARD_W_RATIO)
+    def _card_h(self):  return int(self.H * self._CARD_H_RATIO)
+    def _gap(self):     return int(self.W * self._GAP_RATIO)
+    def _stride(self):  return self._card_w() + self._gap()
+
+    def _center_x_for(self, idx):
+        """인덱스 idx 카드가 화면 중앙에 오려면 필요한 scroll_x."""
+        return idx * self._stride()
+
+    def _snap_to(self, idx):
+        """idx 카드를 중앙으로 부드럽게 이동."""
+        self.selected  = max(0, min(len(self.presets) - 1, idx))
+        self._target_x = self._center_x_for(self.selected)
+
+    def _card_rect(self, idx):
+        """현재 scroll_x 기준 idx 카드의 화면 Rect."""
+        cw, ch = self._card_w(), self._card_h()
+        cy = int(self.H * self._CENTER_Y)
+        base_cx = self.W // 2 + idx * self._stride() - int(self._scroll_x)
+        return pygame.Rect(base_cx - cw // 2, cy - ch // 2, cw, ch)
+
+    def _idx_at(self, mx, my):
+        """(mx, my) 위치의 카드 인덱스 반환. 없으면 None."""
+        for i in range(len(self.presets)):
+            if self._card_rect(i).collidepoint(mx, my):
+                return i
+        return None
+
+    # ── 이벤트 ────────────────────────────────────────────────────
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 return "back"
-            elif event.key in (pygame.K_UP, pygame.K_w):
-                self.selected = max(0, self.selected - 1)
-            elif event.key in (pygame.K_DOWN, pygame.K_s):
-                self.selected = min(len(self.presets) - 1, self.selected + 1)
-            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            elif event.key in (pygame.K_LEFT, pygame.K_a):
+                self._snap_to(self.selected - 1)
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                self._snap_to(self.selected + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                 return ("start", self.presets[self.selected][1])
+
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mx, my = event.pos
-            for i, r in enumerate(self._item_rects()):
-                if r.collidepoint(mx, my):
-                    if i == self.selected:
-                        return ("start", self.presets[i][1])
-                    self.selected = i
+            self._drag_active  = True
+            self._drag_start_x = event.pos[0]
+            self._drag_origin  = self._scroll_x
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._drag_active:
+                drag_dist = abs(event.pos[0] - self._drag_start_x)
+                self._drag_active = False
+
+                if drag_dist < self._DRAG_THRESHOLD:
+                    # 클릭으로 판정: 해당 카드 선택/실행
+                    idx = self._idx_at(*event.pos)
+                    if idx is not None:
+                        if idx == self.selected:
+                            return ("start", self.presets[self.selected][1])
+                        else:
+                            self._snap_to(idx)
+                else:
+                    # 드래그 끝: 가장 가까운 카드로 스냅
+                    raw_idx = self._scroll_x / self._stride()
+                    nearest = int(round(raw_idx))
+                    self._snap_to(nearest)
+
         elif event.type == pygame.MOUSEMOTION:
-            mx, my = event.pos
-            for i, r in enumerate(self._item_rects()):
-                if r.collidepoint(mx, my):
-                    self.selected = i
+            if self._drag_active:
+                dx = event.pos[0] - self._drag_start_x
+                self._scroll_x = self._drag_origin - dx
+                # 범위 클램프 (약간의 과주행 허용)
+                lo = -self._stride() * 0.4
+                hi = self._center_x_for(len(self.presets) - 1) + self._stride() * 0.4
+                self._scroll_x = max(lo, min(hi, self._scroll_x))
+
         return None
 
-    def _item_rects(self):
-        W, H = self.W, self.H
-        item_h = int(H * 0.07)
-        start_y = int(H * 0.15)
-        rects = []
-        for i in range(len(self.presets)):
-            r = pygame.Rect(int(W * 0.2), start_y + i * item_h, int(W * 0.6), item_h - 4)
-            rects.append(r)
-        return rects
-
+    # ── 업데이트 (애니메이션) ──────────────────────────────────────
     def update(self, dt):
-        pass
+        if not self._drag_active:
+            # _scroll_x → _target_x 부드러운 보간
+            diff = self._target_x - self._scroll_x
+            t = min(1.0, self._anim_speed * dt / 1000.0)
+            self._scroll_x += diff * t
 
+    # ── 그리기 ────────────────────────────────────────────────────
     def draw(self):
         W, H = self.W, self.H
         surf = self.screen
         surf.fill(WHITE)
-        draw_text(surf, "전투 선택", self.fonts["title"], BLACK, W // 2, int(H * 0.08))
+
+        draw_text(surf, "전투 선택", self.fonts["title"], BLACK, W // 2, int(H * 0.12))
+
+        cw, ch = self._card_w(), self._card_h()
+        n = len(self.presets)
 
         for i, (key, preset) in enumerate(self.presets):
-            r = self._item_rects()[i]
-            if i == self.selected:
-                pygame.draw.rect(surf, BLACK, r)
-                draw_text(surf, preset["title"], self.fonts["menu"], WHITE, r.centerx, r.centery)
-            else:
-                pygame.draw.rect(surf, WHITE, r)
-                pygame.draw.rect(surf, BLACK, r, 1)
-                draw_text(surf, preset["title"], self.fonts["menu"], BLACK, r.centerx, r.centery)
+            r = self._card_rect(i)
 
-        draw_text(surf, "ESC: 뒤로", self.fonts["hint"], GRAY_D, W // 2, int(H * 0.93))
+            # 화면 밖 카드는 건너뜀
+            if r.right < 0 or r.left > W:
+                continue
+
+            is_sel = (i == self.selected)
+
+            # 카드 배경
+            if is_sel:
+                pygame.draw.rect(surf, BLACK, r, border_radius=8)
+                text_col = WHITE
+                border_col = BLACK
+            else:
+                pygame.draw.rect(surf, WHITE, r, border_radius=8)
+                pygame.draw.rect(surf, BLACK, r, 2, border_radius=8)
+                text_col = BLACK
+                border_col = BLACK
+
+            # 스테이지 번호
+            num_font = self.fonts.get("title", self.fonts["menu"])
+            draw_text(surf, str(i + 1), num_font, text_col, r.centerx, r.centery - int(H * 0.04))
+
+            # 스테이지 제목 (긴 이름 줄바꿈 대신 중앙 표시)
+            title = preset["title"]
+            draw_text(surf, title, self.fonts["hint"], text_col, r.centerx, r.centery + int(H * 0.04))
+
+        # 좌우 화살표 힌트
+        arrow_y = int(H * self._CENTER_Y)
+        arrow_margin = int(W * 0.03)
+        if self.selected > 0:
+            draw_text(surf, "◀", self.fonts["menu"], GRAY_D, arrow_margin, arrow_y)
+        if self.selected < n - 1:
+            draw_text(surf, "▶", self.fonts["menu"], GRAY_D, W - arrow_margin, arrow_y)
+
+        # 페이지 표시 (● 도트)
+        dot_y = int(H * 0.82)
+        dot_r = max(4, int(W * 0.006))
+        dot_gap = dot_r * 3
+        total_dot_w = n * dot_gap - dot_gap
+        dot_x0 = W // 2 - total_dot_w // 2
+        for i in range(n):
+            col = BLACK if i == self.selected else GRAY
+            pygame.draw.circle(surf, col, (dot_x0 + i * dot_gap, dot_y), dot_r)
+
+        # 안내 텍스트
+        draw_text(surf, "← → : 이동   Enter : 선택   ESC : 뒤로", self.fonts["hint"], GRAY_D, W // 2, int(H * 0.92))

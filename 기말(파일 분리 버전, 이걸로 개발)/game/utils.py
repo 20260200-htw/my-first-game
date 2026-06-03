@@ -1,3 +1,14 @@
+import sys as _sys
+
+def resource_path(rel):
+    """PyInstaller exe 또는 일반 실행 모두에서 올바른 리소스 경로 반환."""
+    if getattr(_sys, "frozen", False):
+        base = _sys._MEIPASS
+    else:
+        base = _sys.path[0]   # main.py 기준 실행 디렉토리
+    import os as _os
+    return _os.path.join(base, rel)
+
 import pygame
 import ctypes
 

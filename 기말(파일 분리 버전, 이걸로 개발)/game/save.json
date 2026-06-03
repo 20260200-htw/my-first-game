@@ -1,0 +1,29 @@
+{
+  "unlocked": {
+    "acts": [
+      "0막"
+    ],
+    "chapters": {
+      "0막": [
+        "0장"
+      ]
+    },
+    "stages": {
+      "0막/0장": [
+        "0-1"
+      ]
+    }
+  },
+  "growth": {
+    "주인공": {
+      "level": 1,
+      "exp": 0,
+      "phys_level": 1,
+      "magic_level": 1,
+      "hp_bonus": 0,
+      "spd_bonus": 0,
+      "deal_bonus": 0,
+      "take_bonus": 0
+    }
+  }
+}

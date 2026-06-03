@@ -1,71 +1,70 @@
 import pygame
 import os
+import sys as _sys
+# PyInstaller(_MEIPASS) 또는 일반 실행 모두 대응
+_sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import save_data
 from utils import *
 from data.story_data import STORY
 
 
 # ══════════════════════════════════════════════════════════════════
-#   공통: 직사각형 카드 선택 화면 (이미지 또는 회색 박스+제목)
+#   공통: 카드 선택 화면 (가로 일자 나열 + 드래그/방향키 이동)
 # ══════════════════════════════════════════════════════════════════
 class _CardSelectScreen:
-    """카드(직사각형) 목록을 그리드로 보여주고 하나를 고르는 화면.
-    items: [(key, label, image_path), ...]
-    선택 시 _on_select(key) 가 반환값을 돌려줌."""
-    COLS = 5            # 한 줄에 카드 몇 개
-    CARD_RATIO = 1.4    # 카드 가로/세로 비율 (가로가 더 긴 직사각형)
+    """카드를 가로 한 줄로 배치하고 좌우 방향키 또는 마우스
+    좌클릭 드래그로 이동, Enter/클릭으로 선택하는 공통 화면.
+    items: [(key, label, image_path), ...]"""
+
+    CARD_W_RATIO  = 0.20    # 카드 너비 (화면 폭 비율)
+    CARD_H_RATIO  = 0.50    # 카드 높이 (화면 높이 비율)
+    GAP_RATIO     = 0.025   # 카드 사이 간격
+    CENTER_Y      = 0.55    # 카드 중심 Y
+    DRAG_THRESH   = 8       # 드래그 판정 임계값 (px)
+    ANIM_SPEED    = 14.0    # 슬라이드 보간 속도
 
     def __init__(self, screen, W, H, fonts, title, items):
         self.screen = screen
         self.W, self.H = W, H
         self.fonts = fonts
         self.title = title
-        self.items = items            # [(key, label, image_path)]
+        self.items = items
         self.selected = 0
         self._img_cache = {}
-        self._layout()
 
-    def _layout(self):
-        W, H = self.W, self.H
+        self._scroll_x   = 0.0
+        self._target_x   = 0.0
+        self._drag_active  = False
+        self._drag_start_x = 0
+        self._drag_origin  = 0.0
+
+    # ── 치수 ──────────────────────────────────────────────────────
+    def _cw(self):     return int(self.W * self.CARD_W_RATIO)
+    def _ch(self):     return int(self.H * self.CARD_H_RATIO)
+    def _gap(self):    return int(self.W * self.GAP_RATIO)
+    def _stride(self): return self._cw() + self._gap()
+
+    def _target_for(self, idx):
+        return idx * self._stride()
+
+    def _snap_to(self, idx):
         n = len(self.items)
-        cols = min(self.COLS, max(1, n))
-        # 카드 영역 (제목 아래 ~ 하단 여백)
-        area_top = int(H * 0.18)
-        area_bottom = int(H * 0.90)
-        area_left = int(W * 0.06)
-        area_right = int(W * 0.94)
-        area_w = area_right - area_left
-        area_h = area_bottom - area_top
-        gap = int(W * 0.015)
+        self.selected = max(0, min(n - 1, idx))
+        self._target_x = self._target_for(self.selected)
 
-        # 카드 폭: 항목이 적어도 COLS 기준 폭을 넘지 않도록 상한 (너무 커지는 것 방지)
-        max_card_w = (area_w - gap * (self.COLS - 1)) // self.COLS
-        card_w = min(max_card_w, (area_w - gap * (cols - 1)) // cols)
-        card_h = int(card_w / self.CARD_RATIO)
+    def _card_rect(self, idx):
+        cw, ch = self._cw(), self._ch()
+        cy = int(self.H * self.CENTER_Y)
+        cx = self.W // 2 + idx * self._stride() - int(self._scroll_x)
+        return pygame.Rect(cx - cw // 2, cy - ch // 2, cw, ch)
 
-        rows = (n + cols - 1) // cols
-        # 카드 높이가 영역을 넘으면 높이에 맞춰 축소 (폭도 비율 유지)
-        max_total_h = area_h
-        total_h = rows * card_h + gap * (rows - 1)
-        if total_h > max_total_h:
-            card_h = (max_total_h - gap * (rows - 1)) // rows
-            card_w = int(card_h * self.CARD_RATIO)
+    def _idx_at(self, mx, my):
+        for i in range(len(self.items)):
+            if self._card_rect(i).collidepoint(mx, my):
+                return i
+        return None
 
-        # 그리드 전체 크기 → area 안에서 중앙 정렬
-        grid_w = cols * card_w + gap * (cols - 1)
-        grid_h = rows * card_h + gap * (rows - 1)
-        ox = area_left + (area_w - grid_w) // 2
-        oy = area_top + (area_h - grid_h) // 2
-
-        self.rects = []
-        for i in range(n):
-            r = i // cols
-            c = i % cols
-            x = ox + c * (card_w + gap)
-            y = oy + r * (card_h + gap)
-            self.rects.append(pygame.Rect(x, y, card_w, card_h))
-        self.card_w, self.card_h = card_w, card_h
-        self.cols = cols
-
+    # ── 이미지 ────────────────────────────────────────────────────
     def _load_img(self, path, size):
         if not path or not os.path.exists(path):
             return None
@@ -80,37 +79,67 @@ class _CardSelectScreen:
         except Exception:
             return None
 
+    # ── 이벤트 ────────────────────────────────────────────────────
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
-            n = len(self.items)
-            if event.key in (pygame.K_LEFT, pygame.K_a):
-                self.selected = (self.selected - 1) % n
-            elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                self.selected = (self.selected + 1) % n
-            elif event.key in (pygame.K_UP, pygame.K_w):
-                self.selected = (self.selected - self.cols) % n
-            elif event.key in (pygame.K_DOWN, pygame.K_s):
-                self.selected = (self.selected + self.cols) % n
-            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                return self._on_select(self.items[self.selected][0])
-            elif event.key == pygame.K_ESCAPE:
+            if event.key == pygame.K_ESCAPE:
                 return "back"
-        elif event.type == pygame.MOUSEMOTION:
-            for i, r in enumerate(self.rects):
-                if r.collidepoint(event.pos):
-                    self.selected = i
+            elif event.key in (pygame.K_LEFT, pygame.K_a):
+                self._snap_to(self.selected - 1)
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                self._snap_to(self.selected + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                if not self._is_locked(self.items[self.selected][0]):
+                    return self._on_select(self.items[self.selected][0])
+
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for i, r in enumerate(self.rects):
-                if r.collidepoint(event.pos):
-                    self.selected = i
-                    return self._on_select(self.items[i][0])
+            self._drag_active  = True
+            self._drag_start_x = event.pos[0]
+            self._drag_origin  = self._scroll_x
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._drag_active:
+                dist = abs(event.pos[0] - self._drag_start_x)
+                self._drag_active = False
+                if dist < self.DRAG_THRESH:
+                    idx = self._idx_at(*event.pos)
+                    if idx is not None:
+                        if self._is_locked(self.items[idx][0]):
+                            self._snap_to(idx)   # 포커스만 이동, 진입 불가
+                        elif idx == self.selected:
+                            return self._on_select(self.items[idx][0])
+                        else:
+                            self._snap_to(idx)
+                else:
+                    nearest = int(round(self._scroll_x / self._stride()))
+                    self._snap_to(nearest)
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self._drag_active:
+                dx = event.pos[0] - self._drag_start_x
+                raw = self._drag_origin - dx
+                n = len(self.items)
+                lo = -self._stride() * 0.4
+                hi = self._target_for(n - 1) + self._stride() * 0.4
+                self._scroll_x = max(lo, min(hi, raw))
+
         return None
 
     def _on_select(self, key):
         return ("select", key)
 
-    def update(self, dt): pass
+    def _is_locked(self, key):
+        """서브클래스에서 오버라이드. True면 잠긴 카드."""
+        return False
 
+    # ── 업데이트 ──────────────────────────────────────────────────
+    def update(self, dt):
+        if not self._drag_active:
+            diff = self._target_x - self._scroll_x
+            t = min(1.0, self.ANIM_SPEED * dt / 1000.0)
+            self._scroll_x += diff * t
+
+    # ── 그리기 ────────────────────────────────────────────────────
     def draw(self):
         W, H = self.W, self.H
         surf = self.screen
@@ -119,17 +148,48 @@ class _CardSelectScreen:
         draw_text(surf, self.title, self.fonts["title"], BLACK, W // 2, int(H * 0.09))
         draw_text(surf, "ESC: 뒤로", self.fonts["hint"], GRAY_D, int(W * 0.08), int(H * 0.09))
 
+        n = len(self.items)
+        cw, ch = self._cw(), self._ch()
+
         for i, (key, label, img_path) in enumerate(self.items):
-            r = self.rects[i]
+            r = self._card_rect(i)
+            if r.right < 0 or r.left > W:
+                continue
+
+            locked = self._is_locked(key)
             img = self._load_img(img_path, (r.width, r.height))
-            if img:
+            if locked:
+                # 잠긴 카드: 어두운 회색 + 자물쇠
+                pygame.draw.rect(surf, (160, 160, 160), r, border_radius=6)
+                draw_text(surf, "🔒", self.fonts["menu"], (80, 80, 80), r.centerx, r.centery)
+            elif img:
                 surf.blit(img, r)
             else:
-                pygame.draw.rect(surf, (235, 235, 235), r)
+                pygame.draw.rect(surf, (235, 235, 235), r, border_radius=6)
                 draw_text(surf, label, self.fonts["menu"], BLACK, r.centerx, r.centery)
-            # 선택 테두리
+
             border = 4 if i == self.selected else 1
-            pygame.draw.rect(surf, BLACK, r, border)
+            col = (120, 120, 120) if locked else BLACK
+            pygame.draw.rect(surf, col, r, border, border_radius=6)
+
+        # 좌우 화살표
+        cy = int(H * self.CENTER_Y)
+        margin = int(W * 0.025)
+        if self.selected > 0:
+            draw_text(surf, "◀", self.fonts["menu"], GRAY_D, margin, cy)
+        if self.selected < n - 1:
+            draw_text(surf, "▶", self.fonts["menu"], GRAY_D, W - margin, cy)
+
+        # 하단 도트 인디케이터
+        dot_y = int(H * 0.87)
+        dr = max(4, int(W * 0.005))
+        dg = dr * 3
+        dot_x0 = W // 2 - (n * dg - dg) // 2
+        for i in range(n):
+            col = BLACK if i == self.selected else GRAY
+            pygame.draw.circle(surf, col, (dot_x0 + i * dg, dot_y), dr)
+
+        pass  # 키 가이드 없음
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -141,8 +201,90 @@ class ActSelectScreen(_CardSelectScreen):
                  for k, v in STORY.items()]
         super().__init__(screen, W, H, fonts, "메인 스토리", items)
 
+    def _is_locked(self, key):
+        return not save_data.is_act_unlocked(key)
+
     def _on_select(self, key):
         return ("act", key)
+
+
+# ══════════════════════════════════════════════════════════════════
+#   1-5) 막 내부 메뉴 (스토리/탐험/성장/편성/모집/돌아가기)
+# ══════════════════════════════════════════════════════════════════
+class ActMenuScreen:
+    """막을 선택한 뒤 나타나는 메뉴 화면."""
+    ITEMS = ["스토리", "탐험", "성장", "편성", "모집", "돌아가기"]
+
+    def __init__(self, screen, W, H, fonts, act_key):
+        self.screen  = screen
+        self.W, self.H = W, H
+        self.fonts   = fonts
+        self.act_key = act_key
+        self.selected = 0
+        self._build_rects()
+
+    def _build_rects(self):
+        W, H = self.W, self.H
+        gap = int(H * 0.075)
+        start_y = int(H * 0.28)
+        menu_cx = int(W * 0.25)
+        self.rects = [
+            pygame.Rect(menu_cx - 160, start_y + i * gap - 22, 320, 44)
+            for i in range(len(self.ITEMS))
+        ]
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_UP, pygame.K_w):
+                self.selected = (self.selected - 1) % len(self.ITEMS)
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                self.selected = (self.selected + 1) % len(self.ITEMS)
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                return self._action()
+            elif event.key == pygame.K_ESCAPE:
+                return "back"
+        elif event.type == pygame.MOUSEMOTION:
+            for i, r in enumerate(self.rects):
+                if r.collidepoint(event.pos):
+                    self.selected = i
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for i, r in enumerate(self.rects):
+                if r.collidepoint(event.pos):
+                    self.selected = i
+                    return self._action()
+        return None
+
+    def _action(self):
+        actions = ["story", "explore", "growth", "formation", "recruit", "back"]
+        return actions[self.selected]
+
+    def update(self, dt): pass
+
+    def draw(self):
+        W, H = self.W, self.H
+        surf = self.screen
+        surf.fill(WHITE)
+
+        # 제목: 우측 영역 중앙
+        title_cx = int(W * 0.68)
+        act_title = STORY.get(self.act_key, {}).get("title", self.act_key)
+        draw_text(surf, act_title, self.fonts["title"], BLACK, title_cx, int(H * 0.40))
+
+        # 메뉴: 좌측 영역
+        gap = int(H * 0.075)
+        start_y = int(H * 0.28)
+        menu_cx = int(W * 0.25)
+        for i, item in enumerate(self.ITEMS):
+            cy = start_y + i * gap
+            r  = self.rects[i]
+            if i == self.selected:
+                pygame.draw.rect(surf, BLACK, r)
+                draw_text(surf, item, self.fonts["menu"], WHITE, menu_cx, cy)
+            else:
+                draw_text(surf, item, self.fonts["menu"], BLACK, menu_cx, cy)
+
+        # 구분선 (메뉴와 제목 사이)
+        pygame.draw.line(surf, GRAY, (int(W * 0.45), int(H * 0.15)), (int(W * 0.45), int(H * 0.85)), 1)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -155,6 +297,9 @@ class ChapterSelectScreen(_CardSelectScreen):
         items = [(k, v.get("title", k), v.get("image", ""))
                  for k, v in act["chapters"].items()]
         super().__init__(screen, W, H, fonts, act.get("title", act_key), items)
+
+    def _is_locked(self, key):
+        return not save_data.is_chapter_unlocked(self.act_key, key)
 
     def _on_select(self, key):
         return ("chapter", self.act_key, key)
@@ -171,6 +316,9 @@ class StageSelectScreen(_CardSelectScreen):
         items = [(k, v.get("title", k), v.get("image", ""))
                  for k, v in chap["stages"].items()]
         super().__init__(screen, W, H, fonts, chap.get("title", chapter_key), items)
+
+    def _is_locked(self, key):
+        return not save_data.is_stage_unlocked(self.act_key, self.chapter_key, key)
 
     def _on_select(self, key):
         return ("stage", self.act_key, self.chapter_key, key)
