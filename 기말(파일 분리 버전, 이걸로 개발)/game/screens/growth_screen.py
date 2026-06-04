@@ -161,7 +161,7 @@ class GrowthScreen:
         lx   = int(W*0.25)
         img  = self._img()
         isz  = int(H*0.40)
-        ir   = pygame.Rect(lx - isz//2, int(H*0.13), isz, isz)
+        ir   = pygame.Rect(lx - isz//2, int(H*0.06), isz, isz)
         if img:
             surf.blit(img, ir)
         else:
@@ -169,11 +169,11 @@ class GrowthScreen:
             pygame.draw.rect(surf, DIV, ir, 2)
 
         # 레벨
-        lv_y = int(H*0.57)
+        lv_y = int(H*0.50)
         draw_text(surf, f"Lv. {g['level']}", self.fonts["menu"], BLACK, lx, lv_y)
 
         # 경험치 바
-        exp_y = int(H*0.625)
+        exp_y = int(H*0.555)
         bw    = int(W*0.36)
         bh    = 12
         bx    = lx - bw//2
@@ -187,7 +187,7 @@ class GrowthScreen:
 
         # 남은 포인트 (좌측)
         pt_col = (180,40,40) if lp == 0 else (30,130,60)
-        draw_text(surf, f"남은 포인트  {lp}", self.fonts["hint"], pt_col, lx, int(H*0.685))
+        draw_text(surf, f"남은 포인트  {lp}", self.fonts["hint"], pt_col, lx, int(H*0.615))
 
         # 물리 / 마법 레벨
         rows_l = [

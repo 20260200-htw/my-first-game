@@ -50,9 +50,19 @@ class _CardSelectScreen:
     def _snap_to(self, idx):
         n = len(self.items)
         idx = max(0, min(n - 1, idx))
-        # 잠긴 항목은 건너뜀
+        # 잠긴 항목이면 가장 가까운 열린 항목으로 보정
         if self._is_locked(self.items[idx][0]):
-            return
+            found = None
+            for d in range(1, n):
+                for cand in (idx - d, idx + d):
+                    if 0 <= cand < n and not self._is_locked(self.items[cand][0]):
+                        found = cand
+                        break
+                if found is not None:
+                    break
+            if found is None:
+                return
+            idx = found
         self.selected = idx
         self._target_x = self._target_for(self.selected)
 

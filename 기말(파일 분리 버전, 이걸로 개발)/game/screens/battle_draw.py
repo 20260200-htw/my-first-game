@@ -84,6 +84,87 @@ class BattleDrawMixin:
             else:
                 positions.append((center_x, center_y))
         return positions
+
+    def _build_zoom_cache(self, zoom):
+        """주어진 줌 배율로 배경/바닥/스프라이트 스케일 캐시를 생성.
+        무거운 smoothscale 작업이라, 검은 화면/대기 중에 미리 호출해두면
+        모션 시작 시 렉을 방지할 수 있다."""
+        zq = round(zoom, 2)
+        if self._cache_zoom == zq:
+            return
+        if self.background:
+            bw, bh = self.background.get_size()
+            self._bg_cache = pygame.transform.smoothscale(
+                self.background, (max(1, int(bw * zoom)), max(1, int(bh * zoom))))
+        else:
+            self._bg_cache = None
+        if self.floor:
+            fw, fh = self.floor.get_size()
+            self._floor_cache = pygame.transform.smoothscale(
+                self.floor, (max(1, int(fw * zoom)), max(1, int(fh * zoom))))
+        else:
+            self._floor_cache = None
+        self._enemy_cache = []
+        for i, e in enumerate(self.enemies):
+            if e.sprite_orig and e.sprite:
+                target_w = int(e.sprite.get_width() * zoom)
+                target_h = int(e.sprite.get_height() * zoom)
+                if i != 0:
+                    target_w = target_w // 2
+                    target_h = target_h // 2
+                self._enemy_cache.append(
+                    pygame.transform.smoothscale(e.sprite_orig, (max(1, target_w), max(1, target_h)))
+                )
+            else:
+                self._enemy_cache.append(None)
+        self._ally_cache = []
+        for a in self.allies:
+            if a.sprite_orig and a.sprite:
+                target_w = int(a.sprite.get_width() * zoom)
+                target_h = int(a.sprite.get_height() * zoom)
+                orig_flip = pygame.transform.flip(a.sprite_orig, True, False)
+                self._ally_cache.append(
+                    pygame.transform.smoothscale(orig_flip, (max(1, target_w), max(1, target_h)))
+                )
+            else:
+                self._ally_cache.append(None)
+        self._cache_zoom = zq
+
+    def _preload_motion_zoom(self):
+        """모션 확대 시 도달할 줌(1.4) 캐시를 미리 생성해 별도 보관.
+        실제 화면 캐시(_cache_zoom)는 건드리지 않으므로 인트로 화면 표시에
+        영향이 없다. 모션이 1.4에 도달하면 draw가 이 캐시를 채택한다."""
+        if getattr(self, "_preload_done", False):
+            return
+        # 현재 화면 캐시를 백업
+        bak = (self._cache_zoom, self._bg_cache, self._floor_cache,
+               self._enemy_cache, self._ally_cache)
+        # 1.4 배율로 캐시 생성
+        self._cache_zoom = None
+        self._build_zoom_cache(1.4)
+        # 생성된 1.4 캐시를 프리로드 슬롯에 저장
+        self._preload_cache = {
+            "zoom": round(1.4, 2),
+            "bg": self._bg_cache, "floor": self._floor_cache,
+            "enemy": self._enemy_cache, "ally": self._ally_cache,
+        }
+        # 화면 캐시 원복
+        (self._cache_zoom, self._bg_cache, self._floor_cache,
+         self._enemy_cache, self._ally_cache) = bak
+        self._preload_done = True
+
+    def _consume_preload_if_match(self, zoom):
+        """현재 줌이 프리로드된 배율과 같으면 캐시를 채택(재스케일 생략)."""
+        pc = getattr(self, "_preload_cache", None)
+        if pc and round(zoom, 2) == pc["zoom"] and self._cache_zoom != pc["zoom"]:
+            self._bg_cache    = pc["bg"]
+            self._floor_cache = pc["floor"]
+            self._enemy_cache = pc["enemy"]
+            self._ally_cache  = pc["ally"]
+            self._cache_zoom  = pc["zoom"]
+            return True
+        return False
+
     def draw(self):
         W, H = self.W, self.H
         surf = self.screen
@@ -188,23 +269,32 @@ class BattleDrawMixin:
             tgt_zoom  = self.zoom
 
         # 부드러운 추적 (lerp). 목표에 충분히 가까우면 스냅하여 미세 떨림 제거.
-        # 애니메이션 중이거나, 복귀 중(목표와 차이가 클 때)만 보간.
         dx = tgt_cam_x - self._disp_cam_x
         dy = tgt_cam_y - self._disp_cam_y
         dz = tgt_zoom  - self._disp_zoom
         animating = (self.state in (self.STATE_ANIM, self.STATE_ROLL))
-        if animating:
-            # 애니메이션 중: 부드럽게 추적
-            self._disp_cam_x += dx * 0.18
-            self._disp_cam_y += dy * 0.18
-            self._disp_zoom  += dz * 0.18
+        if self.state == self.STATE_TURN_END and getattr(self, "_turn_end_phase", None) == "out":
+            # 페이드아웃 동안: 직전 모션 화면을 그대로 동결 (축소/이동 금지)
+            pass
+        elif animating:
+            # 애니메이션 중: 부드럽게(천천히) 추적
+            self._disp_cam_x += dx * 0.10
+            self._disp_cam_y += dy * 0.10
+            self._disp_zoom  += dz * 0.10
+            # 목표에 충분히 가까우면 스냅 → 확대 후 미세 떨림 정지
+            if abs(dx) < 0.5: self._disp_cam_x = tgt_cam_x
+            if abs(dy) < 0.5: self._disp_cam_y = tgt_cam_y
+            if abs(dz) < 0.003: self._disp_zoom = tgt_zoom
             self._returning = True
         elif getattr(self, "_returning", False) and not self.dragging:
             # 애니메이션 직후 1회 복귀 보간
-            self._disp_cam_x += dx * 0.25
-            self._disp_cam_y += dy * 0.25
-            self._disp_zoom  += dz * 0.25
-            if abs(dx) < 1 and abs(dy) < 1 and abs(dz) < 0.005:
+            self._disp_cam_x += dx * 0.18
+            self._disp_cam_y += dy * 0.18
+            self._disp_zoom  += dz * 0.18
+            if abs(dx) < 0.5 and abs(dy) < 0.5 and abs(dz) < 0.003:
+                self._disp_cam_x = tgt_cam_x
+                self._disp_cam_y = tgt_cam_y
+                self._disp_zoom  = tgt_zoom
                 self._returning = False
         else:
             # 평상시(드래그/휠 포함) → 즉시 반영, 떨림 없음
@@ -218,48 +308,26 @@ class BattleDrawMixin:
 
         zoom = eff_zoom
 
-        # 스프라이트/배경/바닥 캐시 갱신 (줌이 의미 있게 바뀔 때만)
-        zq = round(zoom, 2)
-        if self._cache_zoom != zq:
-            # 배경 캐시
-            if self.background:
-                bw, bh = self.background.get_size()
-                self._bg_cache = pygame.transform.smoothscale(
-                    self.background, (max(1, int(bw * zoom)), max(1, int(bh * zoom))))
-            else:
-                self._bg_cache = None
-            # 바닥 캐시
-            if self.floor:
-                fw, fh = self.floor.get_size()
-                self._floor_cache = pygame.transform.smoothscale(
-                    self.floor, (max(1, int(fw * zoom)), max(1, int(fh * zoom))))
-            else:
-                self._floor_cache = None
-            self._enemy_cache = []
-            for i, e in enumerate(self.enemies):
-                if e.sprite_orig and e.sprite:
-                    target_w = int(e.sprite.get_width() * zoom)
-                    target_h = int(e.sprite.get_height() * zoom)
-                    if i != 0:
-                        target_w = target_w // 2
-                        target_h = target_h // 2
-                    self._enemy_cache.append(
-                        pygame.transform.smoothscale(e.sprite_orig, (max(1, target_w), max(1, target_h)))
-                    )
-                else:
-                    self._enemy_cache.append(None)
-            self._ally_cache = []
-            for a in self.allies:
-                if a.sprite_orig and a.sprite:
-                    target_w = int(a.sprite.get_width() * zoom)
-                    target_h = int(a.sprite.get_height() * zoom)
-                    orig_flip = pygame.transform.flip(a.sprite_orig, True, False)
-                    self._ally_cache.append(
-                        pygame.transform.smoothscale(orig_flip, (max(1, target_w), max(1, target_h)))
-                    )
-                else:
-                    self._ally_cache.append(None)
-            self._cache_zoom = zq
+        # 스프라이트/배경/바닥 캐시는 항상 최대 줌(1.4)으로 한 번만 생성.
+        # 확대 연출은 이 캐시를 빠른 scale 로 줄여 그리는 방식 → smoothscale 매프레임 호출 없음.
+        CACHE_ZOOM = 1.4
+        if self._cache_zoom != CACHE_ZOOM:
+            if not self._consume_preload_if_match(CACHE_ZOOM):
+                self._build_zoom_cache(CACHE_ZOOM)
+        # 현재 표시 배율 / 캐시 배율 → blit 시 적용할 비율
+        disp_ratio = zoom / CACHE_ZOOM
+
+        def _blit_scaled(src, midbottom):
+            """1.4 캐시 src 를 현재 줌 비율로 가볍게 줄여 midbottom 기준 blit."""
+            if src is None:
+                return None
+            sw, sh = src.get_size()
+            tw = max(1, int(sw * disp_ratio))
+            th = max(1, int(sh * disp_ratio))
+            img = pygame.transform.scale(src, (tw, th))  # 빠른 스케일
+            rect = img.get_rect(midbottom=midbottom)
+            surf.blit(img, rect)
+            return rect
 
         # 화면 → 줌/카메라 적용 좌표 변환
         def to_sx(wx): return int((wx - W / 2 - eff_cam_x) * zoom + W / 2)
@@ -268,21 +336,24 @@ class BattleDrawMixin:
         # ── 배경 (125% 크기로 로드됨, 줌 1.0 = 화면 꽉 채움) ───
         surf.fill((0, 0, 0))
         if self._bg_cache is not None:
-            draw_w, draw_h = self._bg_cache.get_size()
+            cw, ch = self._bg_cache.get_size()
+            draw_w, draw_h = int(cw * disp_ratio), int(ch * disp_ratio)
+            bg_img = pygame.transform.scale(self._bg_cache, (max(1, draw_w), max(1, draw_h)))
             bx = int(W / 2 - draw_w / 2 - eff_cam_x * zoom)
             by = int(H / 2 - draw_h / 2 - eff_cam_y * zoom)
-            surf.blit(self._bg_cache, (bx, by))
+            surf.blit(bg_img, (bx, by))
         else:
             surf.fill(WHITE)
 
         # ── 바닥 (윗면을 캐릭터 발밑 라인 H*0.60 에 맞춤) ─────────
         if self._floor_cache is not None:
-            draw_w, draw_h = self._floor_cache.get_size()
+            cw, ch = self._floor_cache.get_size()
+            draw_w, draw_h = int(cw * disp_ratio), int(ch * disp_ratio)
+            floor_img = pygame.transform.scale(self._floor_cache, (max(1, draw_w), max(1, draw_h)))
             fx = int(W / 2 - draw_w / 2 - eff_cam_x * zoom)
-            # 캐릭터 발밑(world y = H*0.60) 에 바닥 윗면을 정렬
-            FLOOR_TOP_RATIO = 0.60   # 캐릭터 기준점과 동일 (필요시 미세조정)
+            FLOOR_TOP_RATIO = 0.60
             fy = to_sy(int(H * FLOOR_TOP_RATIO))
-            surf.blit(self._floor_cache, (fx, fy))
+            surf.blit(floor_img, (fx, fy))
 
         # ── 적 ────────────────────────────────────────────────────
         enemy_pos = self._enemy_positions()
@@ -297,8 +368,7 @@ class BattleDrawMixin:
             spr = self._enemy_cache[i] if i < len(self._enemy_cache) else None
             spr_rect = None
             if spr:
-                spr_rect = spr.get_rect(midbottom=(sx, sy))
-                surf.blit(spr, spr_rect)
+                spr_rect = _blit_scaled(spr, (sx, sy))
             else:
                 size = int(80 * zoom)
                 pygame.draw.rect(surf, GRAY, pygame.Rect(sx - size // 2, sy - size, size, size))
@@ -344,8 +414,7 @@ class BattleDrawMixin:
             sy = to_sy(ay)
             spr = self._ally_cache[j] if j < len(self._ally_cache) else None
             if spr:
-                r = spr.get_rect(midbottom=(sx, sy))
-                surf.blit(spr, r)
+                r = _blit_scaled(spr, (sx, sy))
                 bar_top = r.top - int(H * 0.01 * zoom)
             else:
                 size = int(60 * zoom)

@@ -141,6 +141,8 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
 
         # ── 스프라이트 캐시 ───────────────────────────────────────
         self._cache_zoom = None
+        self._preload_cache = None   # 프리로드된 모션 줌 캐시
+        self._preload_done  = False
         self._enemy_cache = []
         self._ally_cache  = []
         self._bg_cache    = None
@@ -194,6 +196,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self._turn_end_phase   = None  # "out" / "hold" / "in"
         self._turn_end_label   = ""    # 표시할 "n턴 종료" 문구
         self._was_executing    = False # 실행 페이즈 진행 중이었는지(턴 종료 감지용)
+        self._turn_end_zoomed  = False # 턴종료 hold에서 축소 1회 처리 플래그
         self.anim_actor_offset = {}  # {combatant: (dx, dy)} 모션 중 위치 보정
 
         # 첫 룰렛 렉 방지: 모든 스킬 리소스 미리 로드
@@ -631,12 +634,14 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             self._exec_next()
 
     def _begin_turn_end(self, turn_no):
-        """턴 종료 연출 시작: 페이드아웃 → 'n턴 종료' → 페이드인"""
+        """턴 종료 연출 시작: 페이드아웃 → 'n턴 종료' → 페이드인.
+        축소는 검은 화면이 완전히 덮인 hold 진입 시점에 수행한다."""
         self.state = self.STATE_TURN_END
         self._turn_end_phase = "out"
         self._turn_end_timer = 0.0
         self._turn_end_label = f"{turn_no}턴 종료"
-        self.zoom = self.ZOOM_MIN   # 턴 종료 시 최대 축소
+        self._preload_done = False   # 다음 턴용 프리로드 재수행
+        self._turn_end_zoomed = False  # hold에서 1회 축소 처리 플래그
         self.roll = None
         self.anim = None
         self._clear_total()
@@ -761,6 +766,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             # 전원 계획 완료 → 실행 인트로(레터박스만 올라오고 대기)
             self.state = self.STATE_EXEC_INTRO
             self._exec_intro_timer = 0.0
+            self._preload_done = False   # 이번 실행용 프리로드 재수행
             self.zoom = self.ZOOM_MIN   # 실행 시작은 최대 축소
         else:
             # 다음 아군 계획
@@ -768,19 +774,29 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             self.menu_selected = 0
             self.current_actor = self.logic.planning_actor()
     def update(self, dt):
-        # 레터박스: 실행 페이즈/인트로/턴종료 동안 펼침(1), 그 외 접힘(0)
-        in_exec = (self.logic.is_planning_done() and not self.logic.battle_over) \
-                  or self.state in (self.STATE_EXEC_INTRO, self.STATE_TURN_END)
+        # 레터박스: 실행 페이즈/인트로 동안 펼침(1).
+        # 턴종료는 'out'(페이드아웃) 동안만 유지하고, 검은 화면(hold)부터는 접는다.
+        if self.state == self.STATE_TURN_END:
+            in_exec = (self._turn_end_phase == "out")
+        else:
+            in_exec = (self.logic.is_planning_done() and not self.logic.battle_over) \
+                      or self.state == self.STATE_EXEC_INTRO
         target_lb = 1.0 if in_exec else 0.0
-        step = dt / self.LETTERBOX_SLIDE
-        if self._lb_ratio < target_lb:
-            self._lb_ratio = min(target_lb, self._lb_ratio + step)
-        elif self._lb_ratio > target_lb:
-            self._lb_ratio = max(target_lb, self._lb_ratio - step)
+        # 검은 화면으로 덮인 동안엔 레터박스를 즉시 0으로 (잔상 방지)
+        if self.state == self.STATE_TURN_END and self._turn_end_phase in ("hold", "in"):
+            self._lb_ratio = 0.0
+        else:
+            step = dt / self.LETTERBOX_SLIDE
+            if self._lb_ratio < target_lb:
+                self._lb_ratio = min(target_lb, self._lb_ratio + step)
+            elif self._lb_ratio > target_lb:
+                self._lb_ratio = max(target_lb, self._lb_ratio - step)
 
         # ── 실행 인트로: 레터박스 다 올라오고 대기 후 첫 행동 시작 ──
         if self.state == self.STATE_EXEC_INTRO:
             self._exec_intro_timer += dt
+            # 대기 동안 모션 줌 캐시를 미리 생성 (첫 캐릭터 확대 렉 방지)
+            self._preload_motion_zoom()
             # 레터박스가 충분히 올라오고 대기시간 경과하면 실행 시작
             if self._lb_ratio >= 1.0 and self._exec_intro_timer >= self.EXEC_INTRO_HOLD:
                 self._was_executing = True
@@ -791,10 +807,22 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         if self.state == self.STATE_TURN_END:
             self._turn_end_timer += dt
             if self._turn_end_phase == "out":
+                # 페이드아웃 동안 마지막 모션 화면을 그대로 고정 (축소 금지)
+                self._returning = False
                 if self._turn_end_timer >= self.TURN_END_FADE:
                     self._turn_end_phase = "hold"
                     self._turn_end_timer = 0.0
             elif self._turn_end_phase == "hold":
+                # 검은 화면이 덮인 동안: 축소 + 다음 모션 줌 캐시 프리로드
+                if not self._turn_end_zoomed:
+                    self.zoom = self.ZOOM_MIN          # 화면 축소 (가려져 안 보임)
+                    self._disp_zoom = self.ZOOM_MIN    # 표시 줌도 즉시 반영
+                    self._disp_cam_x = 0.0
+                    self._disp_cam_y = 0.0
+                    self.cam_x = 0.0
+                    self.cam_y = 0.0
+                    self._turn_end_zoomed = True
+                self._preload_motion_zoom()
                 if self._turn_end_timer >= self.TURN_END_HOLD:
                     self._turn_end_phase = "in"
                     self._turn_end_timer = 0.0
