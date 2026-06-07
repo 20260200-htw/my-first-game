@@ -25,6 +25,17 @@ from screens.loading_screen import LoadingScreen
 from data.story_data import STORY
 import save_data
 
+# ── 로그라이크 ────────────────────────────────────────────────────
+from run_state import RUN
+from data import run_data
+import roguelike_flow as rl
+from screens.region_select_screen import RegionSelectScreen
+from screens.map_screen import MapScreen
+from screens.reward_screen import RewardScreen
+from screens.shop_screen import ShopScreen
+from screens.event_screen import EventScreen
+from screens.run_result_screen import RunResultScreen
+
 
 def load_fonts(H):
     def _f(filename, size):
@@ -41,6 +52,34 @@ def load_fonts(H):
         "small_bold": _f("Paperlogy-6SemiBold.ttf", int(H * 0.016)),
         "small":      _f("Paperlogy-6SemiBold.ttf", int(H * 0.016)),
     }
+
+
+def _finish_node(screen, W, H, fonts):
+    """노드(전투 후 보상/이벤트/상점/보상노드) 완료 후 다음 화면 결정.
+    분기맵: 보스/마왕을 깼으면 구간 종료, 아니면 맵으로 돌아가 다음 노드 선택.
+    반환: (current, map_sc, region_sc)
+    """
+    RUN.advance_node()  # 보스/마왕이면 cleared_boss 갱신
+    if RUN.is_segment_done():
+        return _after_segment(screen, W, H, fonts)
+    return ("map", MapScreen(screen, W, H, fonts), None)
+
+
+def _after_segment(screen, W, H, fonts):
+    """구간 종료 후: 다음 구간 지역 선택 또는 마왕성 진입.
+    반환: (current, map_sc, region_sc)
+    """
+    if RUN.segment >= run_data.FINAL_SEGMENT:
+        # 마왕성 종료 = 클리어(전투에서 result 처리됨). 안전망.
+        return ("map", MapScreen(screen, W, H, fonts), None)
+    if RUN.segment >= run_data.FINAL_SEGMENT - 1:
+        # 5구간 종료 → 마왕성 진입
+        RUN.last_region = RUN.region
+        RUN.enter_maw()
+        return ("map", MapScreen(screen, W, H, fonts), None)
+    # 다음 구간 지역 선택
+    RUN.last_region = RUN.region
+    return ("region_select", None, RegionSelectScreen(screen, W, H, fonts))
 
 
 def main():
@@ -73,6 +112,16 @@ def main():
     battle_sc        = None
     gamestart_sc     = None
     battle_select_sc = None
+    # ── 로그라이크 화면 핸들 ──────────────────────────────────────
+    region_sc   = None
+    map_sc      = None
+    reward_sc   = None
+    shop_sc     = None
+    event_sc    = None
+    result_sc   = None
+    rl_growth_sc = None       # 정비(성장) 화면
+    rl_after_battle = None    # 전투 후 처리: "reward_skill"/"reward_item"/"boss"/"maw"/None
+    rl_boss_drop = None       # 보스 전리품 아이템 키
     reset_dlg    = None   # 데이터 초기화 확인 다이얼로그
 
     comp_stack   = []
@@ -192,8 +241,10 @@ def main():
                     gallery_sc = GalleryScreen(screen, W, H, fonts)
                     current = "gallery"
                 elif a == "start":
-                    gamestart_sc = GameStartScreen(screen, W, H, fonts)
-                    current = "gamestart"
+                    # 로그라이크 회차 시작 (주인공 1명으로 시작 → 지역 선택)
+                    RUN.start_new_run()
+                    region_sc = RegionSelectScreen(screen, W, H, fonts)
+                    current = "region_select"
                 elif a == "reset":
                     reset_dlg = ResetConfirmDialog(screen, W, H, fonts)
                     overlay = "reset"
@@ -249,7 +300,36 @@ def main():
             elif current == "battle":
                 r = battle_sc.handle_event(event)
                 if r == "back":
-                    if story_ctx is not None:
+                    # ── 로그라이크 전투 종료 ──────────────────────
+                    if RUN.active:
+                        rl.sync_player_hp_from_battle(battle_sc)
+                        won = rl.battle_won(battle_sc)
+                        if not won:
+                            # 패배 → 결과(실패)
+                            result_sc = RunResultScreen(screen, W, H, fonts, success=False)
+                            current = "run_result"
+                        else:
+                            node = RUN.current_node()
+                            # 경험치/골드 정산
+                            RUN.gain_exp(run_data.EXP_REWARD.get(node, 0))
+                            RUN.add_gold(run_data.GOLD_REWARD.get(node, 0))
+                            if node == run_data.NODE_MAW:
+                                RUN.advance_node()
+                                result_sc = RunResultScreen(screen, W, H, fonts, success=True)
+                                current = "run_result"
+                            elif node == run_data.NODE_BOSS:
+                                RUN.full_heal()
+                                reward_sc = RewardScreen(screen, W, H, fonts,
+                                                         kind="skill", special_item=rl_boss_drop)
+                                rl_boss_drop = None
+                                current = "reward"
+                            elif node == run_data.NODE_ELITE:
+                                reward_sc = RewardScreen(screen, W, H, fonts, kind="item")
+                                current = "reward"
+                            else:
+                                reward_sc = RewardScreen(screen, W, H, fonts, kind="skill")
+                                current = "reward"
+                    elif story_ctx is not None:
                         # 스토리 전투 종료: 승리 시 클리어, 아니면 스테이지 선택으로
                         won = (battle_sc.logic.winner == "ally")
                         _ctx = story_ctx
@@ -355,6 +435,76 @@ def main():
                 if r == "back":
                     current = "title"
 
+            # ── 로그라이크 분기 ───────────────────────────────────
+            elif current == "region_select" and region_sc:
+                r = region_sc.handle_event(event)
+                if r == "back":
+                    current = "title"
+                elif isinstance(r, tuple) and r[0] == "region":
+                    RUN.enter_region(r[1])
+                    map_sc = MapScreen(screen, W, H, fonts)
+                    current = "map"
+
+            elif current == "map" and map_sc:
+                r = map_sc.handle_event(event)
+                if r == "back":
+                    current = "title"
+                elif r == "menu":
+                    rl_growth_sc = GrowthScreen(screen, W, H, fonts)
+                    current = "rl_growth"
+                elif isinstance(r, tuple) and r[0] == "node":
+                    node = r[2]
+                    if node in (run_data.NODE_BATTLE, run_data.NODE_ELITE):
+                        kind = "elite" if node == run_data.NODE_ELITE else "battle"
+                        enemies = run_data.pick_enemy_group(RUN.region, kind)
+                        battle_sc = rl.make_battle(screen, W, H, fonts, enemies)
+                        current = "battle"
+                    elif node == run_data.NODE_BOSS:
+                        boss = run_data.region_boss(RUN.region)
+                        rl_boss_drop = run_data.BOSS_DROP.get(boss["name"])
+                        battle_sc = rl.make_battle(screen, W, H, fonts, boss["enemies"])
+                        current = "battle"
+                    elif node == run_data.NODE_MAW:
+                        battle_sc = rl.make_battle(screen, W, H, fonts, run_data.MAW_FINAL["enemies"])
+                        current = "battle"
+                    elif node == run_data.NODE_EVENT:
+                        event_sc = EventScreen(screen, W, H, fonts)
+                        RUN.add_gold(run_data.GOLD_REWARD.get(run_data.NODE_EVENT, 0))
+                        current = "event"
+                    elif node == run_data.NODE_REWARD:
+                        RUN.add_gold(run_data.GOLD_REWARD.get(run_data.NODE_REWARD, 0))
+                        reward_sc = RewardScreen(screen, W, H, fonts, kind="item")
+                        current = "reward"
+                    elif node == run_data.NODE_SHOP:
+                        shop_sc = ShopScreen(screen, W, H, fonts)
+                        current = "shop"
+
+            elif current == "reward" and reward_sc:
+                r = reward_sc.handle_event(event)
+                if r == "done":
+                    current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
+
+            elif current == "shop" and shop_sc:
+                r = shop_sc.handle_event(event)
+                if r == "done":
+                    current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
+
+            elif current == "event" and event_sc:
+                r = event_sc.handle_event(event)
+                if r == "done":
+                    current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
+
+            elif current == "rl_growth" and rl_growth_sc:
+                r = rl_growth_sc.handle_event(event)
+                if r == "back":
+                    current = "map"
+
+            elif current == "run_result" and result_sc:
+                r = result_sc.handle_event(event)
+                if r == "title":
+                    title = TitleScreen(screen, W, H, fonts)
+                    current = "title"
+
         if current == "title":          title.update(dt)
         elif current == "battle_select": battle_select_sc.update(dt)
         elif current == "gamestart":    gamestart_sc.update(dt)
@@ -365,6 +515,13 @@ def main():
         elif current == "glossary" and gloss_stack:
                                         gloss_top().update(dt)
         elif current == "battle":       battle_sc.update(dt)
+        elif current == "region_select" and region_sc:  region_sc.update(dt)
+        elif current == "map" and map_sc:               map_sc.update(dt)
+        elif current == "reward" and reward_sc:         reward_sc.update(dt)
+        elif current == "shop" and shop_sc:             shop_sc.update(dt)
+        elif current == "event" and event_sc:           event_sc.update(dt)
+        elif current == "rl_growth" and rl_growth_sc:   rl_growth_sc.update(dt)
+        elif current == "run_result" and result_sc:     result_sc.update(dt)
         elif current == "act_menu" and act_menu_sc:   act_menu_sc.update(dt)
         elif current == "growth" and growth_sc:           growth_sc.update(dt)
         elif current == "story" and story_sc:             story_sc.update(dt)
@@ -403,6 +560,13 @@ def main():
         elif current == "glossary" and gloss_stack:
                                         gloss_top().draw()
         elif current == "battle":       battle_sc.draw()
+        elif current == "region_select" and region_sc:  region_sc.draw()
+        elif current == "map" and map_sc:               map_sc.draw()
+        elif current == "reward" and reward_sc:         reward_sc.draw()
+        elif current == "shop" and shop_sc:             shop_sc.draw()
+        elif current == "event" and event_sc:           event_sc.draw()
+        elif current == "rl_growth" and rl_growth_sc:   rl_growth_sc.draw()
+        elif current == "run_result" and result_sc:     result_sc.draw()
         elif current == "act_menu" and act_menu_sc:   act_menu_sc.draw()
         elif current == "growth" and growth_sc:           growth_sc.draw()
         elif current == "story" and story_sc:             story_sc.draw()

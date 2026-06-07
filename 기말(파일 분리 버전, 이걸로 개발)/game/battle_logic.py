@@ -14,6 +14,8 @@ class BattleLogic:
         self.log        = []
         self.battle_over = False
         self.winner      = None
+        # 적 전멸 시 호출되는 콜백 (웨이브 전환용). True 반환 시 전투 미종료.
+        self.on_enemy_wiped = None
         # 계획 단계
         self.phase      = "plan"   # "plan"(계획) / "exec"(실행)
         self.plan_idx   = 0        # 계획 중인 아군 인덱스 (turn_order 기준)
@@ -307,15 +309,13 @@ class BattleLogic:
                 self.winner = "enemy"
                 self.log.append("── 패배... ──")
                 return
-        # 보스 사망 → 즉시 승리
+        # 보스 사망 → 즉시 승리 (단, 다음 웨이브가 있으면 보류)
         bosses = [e for e in self.enemies if e.ctype == "boss"]
-        if bosses and all(b.hp <= 0 for b in bosses):
-            self.battle_over = True
-            self.winner = "ally"
-            self.log.append("── 승리! ──")
-            return
-        # 적 전멸 → 승리
-        if all(e.hp <= 0 for e in self.enemies):
+        enemy_wiped = (bosses and all(b.hp <= 0 for b in bosses)) or all(e.hp <= 0 for e in self.enemies)
+        if enemy_wiped:
+            # 웨이브 콜백: True 반환 시 다음 웨이브로 전환되었으므로 종료하지 않음
+            if self.on_enemy_wiped and self.on_enemy_wiped():
+                return
             self.battle_over = True
             self.winner = "ally"
             self.log.append("── 승리! ──")

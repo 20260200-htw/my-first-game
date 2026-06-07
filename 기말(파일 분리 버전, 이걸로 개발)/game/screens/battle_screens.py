@@ -3,7 +3,23 @@ import os
 from utils import *
 from combatant import Combatant
 from data.characters_data import ENEMY_DEFS, ALLY_DEFS
+from data.recruit_data import RECRUIT_POOL
 from battle_logic import BattleLogic
+
+
+def _ally_def(name):
+    """아군 정의를 ALLY_DEFS(스토리/주인공) 또는 RECRUIT_POOL(모집)에서 찾는다."""
+    if name in ALLY_DEFS:
+        return ALLY_DEFS[name]
+    return RECRUIT_POOL[name]
+
+
+# 출전 인원수 → 아군 배치 이름
+_ALLY_FORM_BY_COUNT = {1: "솔로", 2: "듀오", 3: "트리오", 4: "스쿼드", 5: "풀파티"}
+
+
+def ally_formation_for(n):
+    return _ALLY_FORM_BY_COUNT.get(max(1, min(5, n)), "솔로")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -40,68 +56,34 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
     TURN_END_FADE    = 250   # 페이드 인/아웃 각각 시간
     TURN_END_HOLD    = 500   # "n턴 종료" 표시 유지 시간
     TAB_NAMES = ["개요", "스킬", "패시브"]
-    def __init__(self, screen, W, H, fonts, enemies, allies, enemy_formation="솔캐리_전방", ally_formation="트리오", gap=0.12):
+    def __init__(self, screen, W, H, fonts, enemies=None, allies=None,
+                 enemy_formation="솔캐리_전방", ally_formation="트리오", gap=0.12,
+                 waves=None):
         self.screen  = screen
         self.W, self.H = W, H
         self.fonts   = fonts
 
-        enemy_max_w = int(W * 0.55)
-        enemy_max_h = int(H * 0.55)
-        ally_max_w  = int(W * 0.5)
-        ally_max_h  = int(H * 0.5)
+        self.enemy_max_w = int(W * 0.55)
+        self.enemy_max_h = int(H * 0.55)
+        self.ally_max_w  = int(W * 0.5)
+        self.ally_max_h  = int(H * 0.5)
 
-        self.enemies = [Combatant(ENEMY_DEFS[k], W, H, enemy_max_w, enemy_max_h) for k in enemies]
-        self.allies  = [Combatant(ALLY_DEFS[k],  W, H, ally_max_w,  ally_max_h)  for k in allies]
-        self.enemy_formation = enemy_formation
-        self.ally_formation  = ally_formation
-        self.gap             = gap  # 양 진영 앞 캐릭터 사이 거리 (화면 비율)
+        # ── 웨이브 구성 ────────────────────────────────────────────
+        # waves 가 주어지면 그것을, 아니면 단일 enemies 를 1웨이브로 변환
+        if waves:
+            self.waves = waves
+        else:
+            self.waves = [{"enemies": enemies or [], "enemy_formation": enemy_formation}]
+        self.wave_idx = 0
 
-        # ── 배경 로드 (줌 최소(0.75)에서도 화면을 꽉 채우도록) ──
-        # zoom_min=0.75일 때도 꽉 채우려면: BG * 0.75 >= W → BG >= W/0.75
-        # 카메라 이동 25% 여유까지 포함: BG >= W * (1/0.75 + 0.25) ≈ W * 1.58
-        # 여유있게 W * 1.7 사용
-        WLD_W = int(W * 2.5)
-        WLD_H = int(H * 1)
+        # ── 아군 (전 웨이브 공통, 인원수로 배치 자동 결정) ──────────
+        allies = allies or ["주인공"]
+        self.allies = [Combatant(_ally_def(k), W, H, self.ally_max_w, self.ally_max_h) for k in allies]
+        self.ally_formation = ally_formation_for(len(self.allies))
+        self.gap            = gap
 
-        self.background = None
-        for enemy_name in enemies:
-            bg_path = ENEMY_DEFS[enemy_name].get("background")
-            if bg_path and os.path.exists(bg_path):
-                try:
-                    bg_img = pygame.image.load(bg_path).convert()
-                    orig_w, orig_h = bg_img.get_size()
-                    # 가로를 WLD_W에 맞추고 세로는 비율 유지
-                    scale = WLD_W / orig_w
-                    self.background = pygame.transform.smoothscale(bg_img, (WLD_W, int(orig_h * scale)))
-                    break
-                except Exception as e:
-                    print(f"배경 로드 실패: {bg_path} - {e}")
-
-        # ── 바닥 로드 ──────────────────────────────────────────────
-        self.floor = None
-        for enemy_name in enemies:
-            floor_path = ENEMY_DEFS[enemy_name].get("floor")
-            if floor_path and os.path.exists(floor_path):
-                try:
-                    floor_img = pygame.image.load(floor_path).convert_alpha()
-                    orig_w, orig_h = floor_img.get_size()
-                    scale = WLD_W / orig_w
-                    self.floor = pygame.transform.smoothscale(floor_img, (WLD_W, int(orig_h * scale)))
-                    break
-                except Exception as e:
-                    print(f"바닥 로드 실패: {floor_path} - {e}")
-
-        # ── 배경음악 재생 ──────────────────────────────────────────
-        for enemy_name in enemies:
-            bgm_path = ENEMY_DEFS[enemy_name].get("bgm")
-            if bgm_path and os.path.exists(bgm_path):
-                try:
-                    pygame.mixer.music.load(bgm_path)
-                    pygame.mixer.music.set_volume(settings["bgm_vol"] / 100.0)
-                    pygame.mixer.music.play(-1)
-                    break
-                except Exception as e:
-                    print(f"BGM 로드 실패: {bgm_path} - {e}")
+        # ── 첫 웨이브 적 생성 ──────────────────────────────────────
+        self._spawn_wave(0)
 
         self.ui_y    = int(H * (1.0 - self.UI_H_RATIO))
 
@@ -112,17 +94,81 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self.defense_selected = 0
         self.pending_is_defense = False
         self.UI_ITEMS        = ["스킬", "수비", "아이템"]
-        self.pending_skill   = None   # 선택한 스킬 (대상 선택 대기)
+        self.pending_skill   = None
         self.current_actor   = None
         self._exec_pending   = None
 
         # 전투 로직
         self.logic = BattleLogic(self.enemies, self.allies)
+        self.logic.on_enemy_wiped = self._on_enemy_wiped   # 웨이브 전환 콜백
         self.logic.start_turn()
         self.enemy_timer = 0.0
         self._sync_turn()
 
         self.inspect_enemy   = None
+
+    def _on_enemy_wiped(self):
+        """현재 웨이브 적 전멸 시 호출. 다음 웨이브가 있으면 전환하고 True."""
+        if self.wave_idx + 1 < len(self.waves):
+            self.wave_idx += 1
+            self._spawn_wave(self.wave_idx)
+            # 로직의 적 목록 교체 + 새 턴 시작
+            self.logic.enemies = self.enemies
+            self.logic.start_turn()
+            self._sync_turn()
+            return True
+        return False
+
+    def _spawn_wave(self, idx):
+        """idx 웨이브의 적을 생성하고 배경/바닥/BGM 을 로드(첫 웨이브에서만)."""
+        W, H = self.W, self.H
+        wave = self.waves[idx]
+        enemies = wave["enemies"]
+        self.enemy_formation = wave.get("enemy_formation", "솔로")
+        self.enemies = [Combatant(ENEMY_DEFS[k], W, H, self.enemy_max_w, self.enemy_max_h)
+                        for k in enemies]
+
+        # 배경/바닥/BGM 은 첫 웨이브 진입 시 1회만 세팅 (웨이브마다 바꾸려면 wave에 키 추가)
+        if idx == 0:
+            WLD_W = int(W * 2.5)
+            self.background = None
+            for nm in enemies:
+                bg_path = ENEMY_DEFS[nm].get("background")
+                if bg_path and os.path.exists(bg_path):
+                    try:
+                        bg_img = pygame.image.load(bg_path).convert()
+                        ow, oh = bg_img.get_size()
+                        sc = WLD_W / ow
+                        self.background = pygame.transform.smoothscale(bg_img, (WLD_W, int(oh*sc)))
+                        break
+                    except Exception as e:
+                        print(f"배경 로드 실패: {bg_path} - {e}")
+            self.floor = None
+            for nm in enemies:
+                fp = ENEMY_DEFS[nm].get("floor")
+                if fp and os.path.exists(fp):
+                    try:
+                        fimg = pygame.image.load(fp).convert_alpha()
+                        ow, oh = fimg.get_size()
+                        sc = WLD_W / ow
+                        self.floor = pygame.transform.smoothscale(fimg, (WLD_W, int(oh*sc)))
+                        break
+                    except Exception as e:
+                        print(f"바닥 로드 실패: {fp} - {e}")
+            for nm in enemies:
+                bgm = ENEMY_DEFS[nm].get("bgm")
+                if bgm and os.path.exists(bgm):
+                    try:
+                        pygame.mixer.music.load(bgm)
+                        pygame.mixer.music.set_volume(settings["bgm_vol"] / 100.0)
+                        pygame.mixer.music.play(-1)
+                        break
+                    except Exception as e:
+                        print(f"BGM 로드 실패: {bgm} - {e}")
+        # 캐시 무효화 (다음 draw에서 재생성)
+        self._cache_zoom = None
+        self._preload_done = False
+        self._enemy_cache = []
         self.inspect_ally    = None
         self.inspect_tab     = 0
         self.inspect_sprite  = None
@@ -463,11 +509,9 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             if self.dragging:
                 dx = (mx - self.drag_start_mouse[0]) / self.zoom
                 dy = (my - self.drag_start_mouse[1]) / self.zoom
-                max_x = self.W * self.CAM_MOVE_RATIO
-                max_y_up   = self.H * 0.25
-                max_y_down = self.H * 0.05
-                self.cam_x = max(-max_x, min(max_x, self.drag_start_cam[0] - dx))
-                self.cam_y = max(-max_y_up, min(max_y_down, self.drag_start_cam[1] - dy))
+                self.cam_x = self.drag_start_cam[0] - dx
+                self.cam_y = self.drag_start_cam[1] - dy
+                self._clamp_cam()
             # UI 호버 (UI 내부에 마우스가 있을 때만 반응)
             if self.state == self.STATE_MENU:
                 ui     = self._ui_rect()
@@ -598,15 +642,48 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                 self._sync_turn()
 
         elif event.type == pygame.MOUSEWHEEL:
-            self.zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self.zoom + self.ZOOM_STEP * event.y))
+            if event.y > 0:
+                self._zoom_at_mouse(self.ZOOM_STEP * event.y)
+            elif event.y < 0:
+                # 축소: 화면 중심 기준 + 배경 밖 안 보이게 clamp
+                self.zoom = max(self.ZOOM_MIN, self.zoom + self.ZOOM_STEP * event.y)
+                self._clamp_cam()
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 4:
-            self.zoom = min(self.ZOOM_MAX, self.zoom + self.ZOOM_STEP)
+            self._zoom_at_mouse(self.ZOOM_STEP)
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 5:
             self.zoom = max(self.ZOOM_MIN, self.zoom - self.ZOOM_STEP)
+            self._clamp_cam()
 
         return None
+
+    def _clamp_cam(self):
+        """카메라가 배경 밖을 너무 보여주지 않도록 제한.
+        확대될수록(zoom>1) 화면에 보이는 월드가 좁아지므로 더 많이 움직여도 된다."""
+        z = max(0.0001, self.zoom)
+        scale = 1.0 / z   # 화면이 덮는 월드 비율
+        extra_w = (self.W * 0.5) * max(0.0, 1.0 - scale)
+        extra_h = (self.H * 0.5) * max(0.0, 1.0 - scale)
+        mx   = self.W * self.CAM_MOVE_RATIO + extra_w
+        mup  = self.H * 0.25 + extra_h
+        mdown = self.H * 0.05 + extra_h
+        self.cam_x = max(-mx, min(mx, self.cam_x))
+        self.cam_y = max(-mup, min(mdown, self.cam_y))
+
+    def _zoom_at_mouse(self, delta):
+        """마우스 커서 위치를 중심으로 확대 (커서 아래 월드 좌표 고정)."""
+        W, H = self.W, self.H
+        mx, my = pygame.mouse.get_pos()
+        old_zoom = self.zoom
+        new_zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, old_zoom + delta))
+        if new_zoom == old_zoom:
+            return
+        # 커서 아래 월드 좌표가 줌 전후 동일하도록 카메라 보정
+        self.cam_x += (mx - W / 2) * (1.0 / old_zoom - 1.0 / new_zoom)
+        self.cam_y += (my - H / 2) * (1.0 / old_zoom - 1.0 / new_zoom)
+        self.zoom = new_zoom
+        self._clamp_cam()
     def _sync_turn(self):
         """계획/실행 단계에 맞춰 상태 전환"""
         if self.logic.battle_over:
@@ -637,6 +714,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self._turn_end_timer = 0.0
         self._turn_end_label = f"{turn_no}턴 종료"
         self.zoom = self.ZOOM_MIN   # 턴 종료 시 최대 축소
+        self._lb_ratio = 0.0        # 레터박스 즉시 제거 (올라오지 않게)
         self.roll = None
         self.anim = None
         self._clear_total()
@@ -768,15 +846,20 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             self.menu_selected = 0
             self.current_actor = self.logic.planning_actor()
     def update(self, dt):
-        # 레터박스: 실행 페이즈/인트로/턴종료 동안 펼침(1), 그 외 접힘(0)
-        in_exec = (self.logic.is_planning_done() and not self.logic.battle_over) \
-                  or self.state in (self.STATE_EXEC_INTRO, self.STATE_TURN_END)
-        target_lb = 1.0 if in_exec else 0.0
-        step = dt / self.LETTERBOX_SLIDE
-        if self._lb_ratio < target_lb:
-            self._lb_ratio = min(target_lb, self._lb_ratio + step)
-        elif self._lb_ratio > target_lb:
-            self._lb_ratio = max(target_lb, self._lb_ratio - step)
+        # 레터박스: 실행 페이즈/인트로 동안만 펼침(1). 턴종료에서는 접는다.
+        if self.state == self.STATE_TURN_END:
+            # 턴 종료 연출 동안 레터박스는 즉시 사라진 상태로 유지
+            self._lb_ratio = 0.0
+            target_lb = 0.0
+        else:
+            in_exec = (self.logic.is_planning_done() and not self.logic.battle_over) \
+                      or self.state == self.STATE_EXEC_INTRO
+            target_lb = 1.0 if in_exec else 0.0
+            step = dt / self.LETTERBOX_SLIDE
+            if self._lb_ratio < target_lb:
+                self._lb_ratio = min(target_lb, self._lb_ratio + step)
+            elif self._lb_ratio > target_lb:
+                self._lb_ratio = max(target_lb, self._lb_ratio - step)
 
         # ── 실행 인트로: 레터박스 다 올라오고 대기 후 첫 행동 시작 ──
         if self.state == self.STATE_EXEC_INTRO:

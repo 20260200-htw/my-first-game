@@ -51,6 +51,8 @@ def _default_save():
                 "spd_bonus":   0,
                 "deal_bonus":  0,
                 "take_bonus":  0,
+                "basic_point": 0,   # 미분배 기초 포인트(물리/마법)
+                "extra_point": 0,   # 미분배 부가 포인트(체력/속도/딜/방어)
             }
         }
     }
@@ -194,7 +196,15 @@ def on_stage_clear(act_key, chap_key, stage_key, story):
 
 # ── 성장 데이터 접근 ──────────────────────────────────────────────────
 def get_growth(char="주인공"):
-    return _data["growth"].get(char, _default_save()["growth"]["주인공"])
+    g = _data["growth"].get(char)
+    default = _default_save()["growth"]["주인공"]
+    if g is None:
+        return dict(default)
+    # 누락된 키 기본값으로 보강 (구버전 세이브 호환)
+    for k, v in default.items():
+        if k not in g:
+            g[k] = v
+    return g
 
 def set_growth(data, char="주인공"):
     _data["growth"][char] = data

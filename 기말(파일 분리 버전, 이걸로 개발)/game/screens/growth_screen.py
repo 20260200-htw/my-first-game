@@ -20,21 +20,13 @@ def _exp_to_next(level):
 
 
 def _left_pts(g):
-    """좌측 포인트 (물리/마법): 레벨 2부터 지급, 레벨당 2포인트"""
-    if g["level"] < 2:
-        return 0
-    base = (g["level"] - 1) * 2
-    used = (g["phys_level"] - 1) + (g["magic_level"] - 1)
-    return base - used
+    """좌측 포인트 (물리/마법): 레벨업으로 적립된 미사용 기초 포인트."""
+    return g.get("basic_point", 0)
 
 
 def _right_pts(g):
-    """우측 포인트 (스탯): 레벨 2부터 지급, 레벨당 3포인트"""
-    if g["level"] < 2:
-        return 0
-    base = (g["level"] - 1) * 3
-    used = g["hp_bonus"] + g["spd_bonus"] + g["deal_bonus"] + g["take_bonus"]
-    return base - used
+    """우측 포인트 (스탯): 레벨업으로 적립된 미사용 부가 포인트."""
+    return g.get("extra_point", 0)
 
 
 class GrowthScreen:
@@ -101,7 +93,7 @@ class GrowthScreen:
         if self._skill_rect().collidepoint(pos):
             return "skill_config"
 
-        # 좌측: 물리/마법 레벨
+        # 좌측: 물리/마법 레벨 (기초 포인트 사용)
         rows_l = [
             (int(H*0.72), "phys_level"),
             (int(H*0.83), "magic_level"),
@@ -111,10 +103,12 @@ class GrowthScreen:
         for cy, key in rows_l:
             if self._btn(up_x, cy).collidepoint(pos) and lp > 0:
                 g[key] += 1
+                g["basic_point"] = g.get("basic_point", 0) - 1
             if self._btn(dn_x, cy).collidepoint(pos) and g[key] > 1:
                 g[key] -= 1
+                g["basic_point"] = g.get("basic_point", 0) + 1
 
-        # 우측: 스탯
+        # 우측: 스탯 (부가 포인트 사용)
         rows_r = [
             (int(H*0.28), "hp_bonus"),
             (int(H*0.42), "spd_bonus"),
@@ -126,8 +120,10 @@ class GrowthScreen:
         for cy, key in rows_r:
             if self._btn(up_rx, cy).collidepoint(pos) and rp > 0:
                 g[key] += 1
+                g["extra_point"] = g.get("extra_point", 0) - 1
             if self._btn(dn_rx, cy).collidepoint(pos) and g[key] > 0:
                 g[key] -= 1
+                g["extra_point"] = g.get("extra_point", 0) + 1
 
         self._save()
         return None

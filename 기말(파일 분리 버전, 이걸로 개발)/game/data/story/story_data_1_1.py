@@ -230,7 +230,7 @@ CHAPTER = {
                     "affiliation": "중계자",
                     "speaker": "???",
                     "sound": "assets/BC/broadcaster.mp3",
-                    "text": "등급을 올리는 건 가능해요. 하지만, 동부나 서부로 향하는 통행권을 취득하기 위해선 최소 4급 모험가 자격이 필요해요.",
+                    "text": "등급을 올리는 건 가능해요.",
                 },
                 {
                     "characters": [
@@ -266,7 +266,16 @@ CHAPTER = {
                     "affiliation": "중계자",
                     "speaker": "???",
                     "sound": "assets/BC/broadcaster.mp3",
-                    "text": "'모험가 심사'에서 좋은 성적을 거두어 최대한 높은 등급으로 시작하는 것이 훨씬 유리해요.",
+                    "text": "하지만 다음 목적지인 동부나 서부로 향하는 통행권을 취득하기 위해선 최소 4급 모험가 자격이 필요해요.",
+                },
+                {
+                    "characters": [
+                        {"sprite": "assets/MC/main_character_B.png", "x": 0.50, "y": 1, "scale": 0.75},
+                    ],
+                    "affiliation": "중계자",
+                    "speaker": "???",
+                    "sound": "assets/BC/broadcaster.mp3",
+                    "text": "따라서 '모험가 심사'에서 좋은 성적을 거두어 최대한 높은 등급으로 시작하는 것이 훨씬 유리하답니다.",
                 },
                 {
                     "characters": [
@@ -401,7 +410,7 @@ CHAPTER = {
                     ],
                     "affiliation": "이야기의 주인공",
                     "speaker": "주인공",
-                    "text": "(일단 '모험가 심사'라는 걸 치뤄야 하니, 먼저 레벨업을 하는 게 맞는 방향이겠지.)",
+                    "text": "(일단 '모험가 심사'라는 걸 치뤄야 하는 것 같은데...)",
                 },
                 {
                     "characters": [
@@ -409,17 +418,45 @@ CHAPTER = {
                     ],
                     "affiliation": "이야기의 주인공",
                     "speaker": "주인공",
-                    "text": "(이곳은 안전한 구역 같으니 좀 나가서 마물이 있는 곳을 찾아봐야 겠다.)",
+                    "text": "(잠깐, 그게 언제 어떻게 진행되는지는 안 알려주고 간거야?)",
+                },
+                {
+                    "characters": [
+                        {"sprite": "assets/MC/main_character_B.png", "x": 0.50, "y": 1, "scale": 0.75},
+                    ],
+                    "affiliation": "이야기의 주인공",
+                    "speaker": "주인공",
+                    "text": "(...)",
+                },
+                {
+                    "characters": [
+                        {"sprite": "assets/MC/main_character_B.png", "x": 0.50, "y": 1, "scale": 0.75},
+                    ],
+                    "affiliation": "이야기의 주인공",
+                    "speaker": "주인공",
+                    "text": "(일단 길드 건물부터 찾아보자.)",
                 },
                 {
                     "characters": [
                     
                     ],
-                    "text": "그렇게 나는 왕국을 벗어나 성벽 외곽을 둘러보기로 했다.",
+                    "text": "그렇게 나는 왕국 내부를 둘러보기로 했다.",
                 },
             ],
         },
-        "1-2": {"title": "1-2", "image": ""},
+        "1-2": {
+            "title": "1-2",
+            "image": "",
+            # 웨이브 전투 예시: 편성(party) 사용, 2웨이브
+            "battle": {
+                "ally_mode": "party",
+                "gap": 0.3,
+                "waves": [
+                    {"enemies": ["말단병사", "말단병사"], "enemy_formation": "듀오"},
+                    {"enemies": ["벨라", "말단병사", "말단병사"], "enemy_formation": "트리오"},
+                ],
+            },
+        },
         "1-3": {"title": "1-3", "image": ""},
         "1-4": {"title": "1-4", "image": ""},
         "1-5": {"title": "1-5", "image": ""},

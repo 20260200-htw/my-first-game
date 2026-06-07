@@ -31,7 +31,9 @@
       "hp_bonus": 0,
       "spd_bonus": 0,
       "deal_bonus": 0,
-      "take_bonus": 0
+      "take_bonus": 0,
+      "basic_point": 0,
+      "extra_point": 0
     }
   }
 }
