@@ -583,6 +583,7 @@ ENEMY_DEFS = {
                     "가진 꼬리 1개당 가하는 피해량 +5% (가진 꼬리 개수: 8)",
                     "가진 꼬리 1개당 받는 피해량 -5% (가진 꼬리 개수: 8)",
                 ],
+                "effects": [{"kind": "take_mult", "value": 0.95}]
             },
             {
                 "name": "여우불",
@@ -591,9 +592,10 @@ ENEMY_DEFS = {
                     "턴이 종료될 때 자신이 이번 턴에 소모한 '여우불' 중첩 만큼 마력을 회복합니다.",
                     "여우불은 최대 (가진 꼬리의 개수 x 111) 까지 중첩되며, 최대 중첩을 달성한 다음 턴에 강력한 스킬을 사용합니다."
                 ],
+                "effects": [{"kind": "take_mult", "value": 0.95}]
             },
         ],
-        "speed_min": 10, "speed_max": 10,
+        "speed_min": 9, "speed_max": 10,
         "skills": [
             {"name": "보조 사격", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
              "sprite": "", "motion": "cast",

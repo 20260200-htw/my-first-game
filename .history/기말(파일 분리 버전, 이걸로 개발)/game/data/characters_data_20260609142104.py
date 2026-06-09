@@ -558,49 +558,6 @@ ENEMY_DEFS = {
              "sound": "assets/gun_shot.mp3", "desc": ["총을 쏜다. 비겁하다."]},
         ]
     },
-    "Eight_tails": {
-        "name":          "팔미호",
-        "type":          "boss",
-        "level":         88,
-        "phys_level":    84,
-        "magic_level":   92,
-        "hp_max":        8890,
-        "mp_max":        3000,
-        "sprite":        "assets/ETs/ETs_battle",
-        "profile":       "assets/ETs/ETs_profile",
-        "sprite_scale":  0.55,
-        "click_w_ratio": 0.2,
-        "overview": [
-            "설명설명",
-            "",
-            "설명설명",
-            "설명설명",
-        ],
-        "passives": [
-            {
-                "name": "미호",
-                "desc": [
-                    "가진 꼬리 1개당 가하는 피해량 +5% (가진 꼬리 개수: 8)",
-                    "가진 꼬리 1개당 받는 피해량 -5% (가진 꼬리 개수: 8)",
-                ],
-            },
-            {
-                "name": "여우불",
-                "desc": [
-                    "턴이 종료될 때 자신이 이번 턴에 스킬로 소모한 마력 만큼 '여우불' 중첩을 얻습니다.",
-                    "턴이 종료될 때 자신이 이번 턴에 소모한 '여우불' 중첩 만큼 마력을 회복합니다.",
-                    "여우불은 최대 (가진 꼬리의 개수 x 111) 까지 중첩되며, 최대 중첩을 달성한 다음 턴에 강력한 스킬을 사용합니다."
-                ],
-            },
-        ],
-        "speed_min": 10, "speed_max": 10,
-        "skills": [
-            {"name": "보조 사격", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
-             "sprite": "", "motion": "cast",
-             "effect_self": "assets/SSG/SSG_nanmu_self.png", "effect_target": "assets/gun_shot_target.png",
-             "sound": "assets/gun_shot.mp3", "desc": ["총을 쏜다. 비겁하다."]},
-        ]
-    },
     "template": {
         "title":         "",
         "name":          "템플릿",
