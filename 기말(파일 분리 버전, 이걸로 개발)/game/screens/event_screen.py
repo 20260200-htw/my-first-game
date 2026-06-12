@@ -6,67 +6,30 @@ _sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath
 from utils import *
 from run_state import RUN
 from data import run_data
+from data import encounter_data
 
 CARD_BG  = (238, 238, 238)
 CARD_HOV = (250, 245, 220)
 
 
-# ── 이벤트 정의 ───────────────────────────────────────────────────
-# 각 이벤트: text(상황), choices[{label, outcome}]
-#   outcome 타입: gold / heal / ally / item / skill / battle / nothing
-def _build_events():
-    events = [
-        {
-            "text": "낡은 보물상자를 발견했다. 열어볼까?",
-            "choices": [
-                {"label": "연다", "outcome": ("gold", 40)},
-                {"label": "무시한다", "outcome": ("nothing", 0)},
-            ],
-        },
-        {
-            "text": "지친 몸을 쉴 수 있는 안전한 공터를 찾았다.",
-            "choices": [
-                {"label": "휴식한다 (체력 30% 회복)", "outcome": ("heal", 30)},
-                {"label": "그냥 지나간다", "outcome": ("nothing", 0)},
-            ],
-        },
-        {
-            "text": "한 모험가가 동행을 제안한다. 함께 하겠는가?",
-            "choices": [
-                {"label": "받아들인다 (동료 합류)", "outcome": ("ally", None)},
-                {"label": "거절한다", "outcome": ("nothing", 0)},
-            ],
-        },
-        {
-            "text": "수상한 제단이 있다. 마력이 느껴진다.",
-            "choices": [
-                {"label": "힘을 흡수한다 (스킬 획득)", "outcome": ("skill", None)},
-                {"label": "건드리지 않는다", "outcome": ("nothing", 0)},
-            ],
-        },
-        {
-            "text": "행상인이 물건을 떨어뜨리고 갔다.",
-            "choices": [
-                {"label": "주워서 챙긴다 (아이템 획득)", "outcome": ("item", None)},
-                {"label": "주인을 찾아준다 (골드)", "outcome": ("gold", 30)},
-            ],
-        },
-    ]
-    return events
-
-
 class EventScreen:
-    """이벤트 노드. 텍스트 + 선택지. 결과 표시 후 종료.
+    """사건(이벤트) 노드. 텍스트 + 선택지. 결과 표시 후 종료.
+    event: encounter_data 형식의 사건 정의 (None 이면 라이브러리에서 랜덤).
+           (선행 다이얼로그 "cuts" 는 main.py 가 DialogueScreen 으로 먼저 출력한다.)
     반환값:
-      "done"                     — 이벤트 종료(노드 완료)
-      ("battle", enemies)        — 선택 결과 전투 (현재는 미사용)
+      "done"               — 사건 종료(노드 완료)
+      ("battle", spec)     — 선택 결과 전투로 파생.
+                             spec = {"enemies":[...], "drop":키, "reward":"skill"/"item", "gold":n}
     """
 
-    def __init__(self, screen, W, H, fonts):
+    def __init__(self, screen, W, H, fonts, event=None):
         self.screen = screen
         self.W, self.H = W, H
         self.fonts = fonts
-        self.event = random.choice(_build_events())
+        if event is None:
+            import copy
+            event = copy.deepcopy(random.choice(list(encounter_data.EVENT_DEFS.values())))
+        self.event = event
         self.phase = "choice"     # choice / result
         self.result_text = ""
         self.hover = None
@@ -107,15 +70,25 @@ class EventScreen:
 
     def _resolve(self, outcome):
         kind, val = outcome
-        if kind == "gold":
+        if kind == "battle":
+            # 전투로 파생 — main.py 가 전투를 만들고, 승리 후 spec 의 drop/reward 를 정산한다.
+            spec = dict(val) if isinstance(val, dict) else {"enemies": list(val)}
+            return ("battle", spec)
+        elif kind == "gold":
             RUN.add_gold(val)
-            self.result_text = f"골드를 {val} 얻었다."
+            if val >= 0:
+                self.result_text = f"골드를 {val} 얻었다."
+            else:
+                self.result_text = f"골드를 {-val} 잃었다."
         elif kind == "heal":
             RUN.heal(val)
             self.result_text = f"체력을 {val}% 회복했다."
         elif kind == "ally":
-            # 합류 가능한 동료 중 파티에 없는 하나
-            pool = [a for a in run_data.JOINABLE_ALLIES if a not in RUN.party]
+            # val 에 이름을 지정하면 그 동료, None 이면 풀에서 랜덤
+            if val:
+                pool = [val] if val not in RUN.party else []
+            else:
+                pool = [a for a in run_data.JOINABLE_ALLIES if a not in RUN.party]
             if pool and len(RUN.party) < 5:
                 name = random.choice(pool)
                 RUN.add_ally(name)
@@ -123,20 +96,32 @@ class EventScreen:
             else:
                 self.result_text = "하지만 함께할 수 없었다."
         elif kind == "skill":
-            choices = run_data.roll_skill_choices(1, [s["name"] for s in RUN.skills_owned])
-            if choices:
-                import copy
-                RUN.add_skill(copy.deepcopy(choices[0]))
-                self.result_text = f"새로운 스킬 '{choices[0]['name']}'을(를) 익혔다!"
-            else:
-                self.result_text = "아무 일도 없었다."
+            import copy
+            if val:  # 특정 스킬 지정
+                sk = run_data.skill_by_name(val)
+                if sk and RUN.add_skill(sk):
+                    self.result_text = f"새로운 스킬 '{sk['name']}'을(를) 익혔다!"
+                else:
+                    self.result_text = "이미 알고 있는 기술이었다."
+            else:    # 랜덤 (이미 아는 스킬 제외)
+                choices = run_data.roll_skill_choices(1, [s["name"] for s in RUN.skills_owned])
+                if choices and RUN.add_skill(copy.deepcopy(choices[0])):
+                    self.result_text = f"새로운 스킬 '{choices[0]['name']}'을(를) 익혔다!"
+                else:
+                    self.result_text = "아무 일도 없었다."
         elif kind == "item":
-            choices = run_data.roll_item_choices(1, RUN.items)
-            if choices:
-                RUN.add_item(choices[0])
-                self.result_text = f"'{run_data.ITEMS[choices[0]]['name']}'을(를) 손에 넣었다!"
-            else:
-                self.result_text = "이미 모든 것을 가지고 있다."
+            if val:  # 특정 아이템 지정
+                if val in run_data.ITEMS and RUN.add_item(val):
+                    self.result_text = f"'{run_data.ITEMS[val]['name']}'을(를) 손에 넣었다!"
+                else:
+                    self.result_text = "이미 가지고 있는 물건이다."
+            else:    # 랜덤 (보유 제외)
+                choices = run_data.roll_item_choices(1, RUN.items)
+                if choices:
+                    RUN.add_item(choices[0])
+                    self.result_text = f"'{run_data.ITEMS[choices[0]]['name']}'을(를) 손에 넣었다!"
+                else:
+                    self.result_text = "이미 모든 것을 가지고 있다."
         else:
             self.result_text = "아무 일도 없었다."
         self.phase = "result"

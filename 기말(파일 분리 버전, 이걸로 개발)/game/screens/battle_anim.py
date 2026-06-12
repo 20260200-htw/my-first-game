@@ -25,16 +25,65 @@ class BattleAnimMixin:
             return
         actor, skill, primary, targets = r["actor"], r["skill"], r["primary"], r["targets"]
         r["display"] = r["final_power"]   # 룰렛 숫자 고정 (모션 중 유지)
+        # 마력/중첩 소모는 스킬 발동 시작 시 1회만 (다단히트 무관)
+        self.logic.consume_skill_cost(actor, skill)
+        skill["_cost_charged"] = True     # use_skill 경로 중복 소모 방지 플래그
         motion = skill.get("motion")
+        # 전용 모션이면 스프라이트 시퀀스 시작 + 베이스 연출로 치환
+        from data import motion_data
+        mdef = motion_data.get_motion(motion)
+        if mdef:
+            self._start_sprite_sequence(actor, mdef["frames"])
+            motion = mdef["base"]
         if motion in ("stationary", "behind"):
             self._start_melee_rush(actor, skill, primary, targets)
         elif motion in ("cast", "command"):
             # 지원 스킬(command)도 cast 와 동일한 연출 사용
             self._start_cast(actor, skill, primary, targets)
+        elif motion == "charge":
+            self._start_charge(actor, skill, primary, targets)
+        elif motion == "smite":
+            self._start_smite(actor, skill, primary, targets)
         else:
             self.state = self.STATE_ENEMY
             self.enemy_timer = 0.0
             self._exec_pending = (actor, skill, primary)
+
+    def _start_sprite_sequence(self, actor, frames):
+        """모션 중 스프라이트 시퀀스 재생 상태 시작.
+        frames: [(경로, 유지시간초), ...]. update 에서 시간에 따라 교체."""
+        self._sprite_seq = {
+            "actor": actor,
+            "frames": list(frames),
+            "idx": 0,
+            "timer": 0.0,
+        }
+        if frames:
+            actor.set_sprite(frames[0][0])
+
+    def _update_sprite_sequence(self, dt):
+        """매 프레임 호출: 스프라이트 시퀀스 진행. dt(ms)."""
+        seq = getattr(self, "_sprite_seq", None)
+        if not seq:
+            return
+        seq["timer"] += dt / 1000.0
+        frames = seq["frames"]
+        idx = seq["idx"]
+        if idx >= len(frames):
+            return
+        hold = frames[idx][1]
+        if seq["timer"] >= hold:
+            seq["timer"] -= hold
+            seq["idx"] += 1
+            if seq["idx"] < len(frames):
+                seq["actor"].set_sprite(frames[seq["idx"]][0])
+
+    def _end_sprite_sequence(self):
+        """모션 종료 시 기본 스프라이트 복귀 + 시퀀스 해제."""
+        seq = getattr(self, "_sprite_seq", None)
+        if seq:
+            seq["actor"].reset_sprite()
+            self._sprite_seq = None
     def _start_cast(self, actor, skill, primary, targets):
         """cast 연출 시작: 시전자 줌인 → 대상으로 이동 → 다단 타격"""
         self._start_total(actor)
@@ -180,6 +229,11 @@ class BattleAnimMixin:
     CAST_HIT     = 120   # 타격 1회 시간
     CAST_GAP     = 80    # 타격 간 간격
     CAST_END     = 1000  # 종료 대기
+    # 새 시전 모션
+    CHARGE_TIME  = 650   # charge: 차징(기 모으기) 시간
+    CHARGE_HIT   = 130   # charge: 타격 1회 시간
+    SMITE_GATHER = 600   # smite: 암전+빛 모으기 시간
+    SMITE_DROP   = 260   # smite: 강하(타격) 시간
 
     def _update_cast(self, dt):
         a = self.anim
@@ -264,6 +318,125 @@ class BattleAnimMixin:
                 self.roll = None
                 self.logic.advance()
                 self._sync_turn()
+    # ══════════════════════════════════════════════════════════════
+    #  새 시전 모션 ① charge — 제자리 차징 후 일제 발사 (카메라 시전자 고정)
+    #  새 시전 모션 ② smite  — 화면 암전 후 대상 위에서 빛 강하
+    # ══════════════════════════════════════════════════════════════
+
+    def _apply_skill_hit(self, a, shake=True, shake_scale=1.0):
+        """cast 와 동일한 1회 타격 처리(수비/지원/공격 분기) + 사운드·이펙트·데미지."""
+        if a["skill"].get("def_kind"):
+            self.logic.apply_defense_skill(a["actor"], a["skill"], primary=a["primary"])
+            _res = []
+        elif self.logic.is_support(a["skill"]):
+            _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"])
+        else:
+            _res = self.logic.apply_single_hit(a["actor"], a["skill"], a["targets"],
+                                               a.get("fraction", 1.0))
+            if shake:
+                self.shake_timer = int(120 * shake_scale)
+                self.shake_mag   = int(self.H * 0.012 * shake_scale)
+        self._play_skill_sound(a["skill"])
+        self._register_damage(_res)
+        for t in a["targets"]:
+            self._play_one_effect(a["skill"].get("effect_target", ""), t)
+
+    # ── charge ────────────────────────────────────────────────────
+    def _start_charge(self, actor, skill, primary, targets):
+        """기를 모았다가(차징) 다단 일제 타격. 카메라는 시전자에 고정."""
+        self._start_total(actor)
+        hits  = skill.get("hits", 1)
+        split = skill.get("split", 1)
+        self.anim = {
+            "type": "charge", "actor": actor, "skill": skill,
+            "primary": primary, "targets": targets,
+            "hits": hits * split, "fraction": 1.0 / split,
+            "hit_done": 0, "phase": "charge", "timer": 0.0,
+        }
+        self.state = self.STATE_ANIM
+        self._anim_cam_start = (self.cam_x, self.cam_y, self.zoom)
+
+    def _update_charge(self, dt):
+        a = self.anim
+        a["timer"] += dt
+        phase = a["phase"]
+        if phase == "charge":
+            # 차징 동안 시전자에 효과 1회 + 점점 강해지는 진동
+            if not a.get("self_fx"):
+                self._play_one_effect(a["skill"].get("effect_self", ""), a["actor"])
+                a["self_fx"] = True
+            p = min(1.0, a["timer"] / self.CHARGE_TIME)
+            self.shake_timer = 60
+            self.shake_mag   = max(1, int(self.H * 0.006 * p))
+            if a["timer"] >= self.CHARGE_TIME:
+                a["phase"] = "burst"; a["timer"] = 0.0
+        elif phase == "burst":
+            # 일제 다단 타격
+            if not a.get("hit_applied") and a["timer"] >= self.CHARGE_HIT * 0.4:
+                self._apply_skill_hit(a, shake=True, shake_scale=1.3)
+                a["hit_applied"] = True
+                a["hit_done"] += 1
+            if a["timer"] >= self.CHARGE_HIT + self.CAST_GAP:
+                a["hit_applied"] = False
+                if a["hit_done"] >= a["hits"] or self.logic.battle_over:
+                    a["phase"] = "finish"; a["timer"] = 0.0
+                else:
+                    a["timer"] = 0.0
+        elif phase == "finish":
+            if a["timer"] >= self.CAST_END:
+                self.anim = None; self.effects = []
+                self._clear_total(); self.roll = None
+                self.logic.advance(); self._sync_turn()
+
+    # ── smite ─────────────────────────────────────────────────────
+    def _start_smite(self, actor, skill, primary, targets):
+        """화면 암전 → 대상 위에서 빛이 모였다 강하. 무거운 광역기용."""
+        self._start_total(actor)
+        hits  = skill.get("hits", 1)
+        split = skill.get("split", 1)
+        self.anim = {
+            "type": "smite", "actor": actor, "skill": skill,
+            "primary": primary, "targets": targets,
+            "hits": hits * split, "fraction": 1.0 / split,
+            "hit_done": 0, "phase": "gather", "timer": 0.0,
+            "darken": 0.0,   # 화면 암전 알파(0~1), draw 에서 사용
+        }
+        self.state = self.STATE_ANIM
+        self._anim_cam_start = (self.cam_x, self.cam_y, self.zoom)
+
+    def _update_smite(self, dt):
+        a = self.anim
+        a["timer"] += dt
+        phase = a["phase"]
+        if phase == "gather":
+            # 점점 어두워지며 대상 위로 빛이 모인다
+            a["darken"] = min(1.0, a["timer"] / self.SMITE_GATHER)
+            if not a.get("self_fx"):
+                self._play_one_effect(a["skill"].get("effect_self", ""), a["actor"])
+                a["self_fx"] = True
+            if a["timer"] >= self.SMITE_GATHER:
+                a["phase"] = "strike"; a["timer"] = 0.0
+        elif phase == "strike":
+            # 강하 순간 큰 흔들림 + 타격, 이후 암전 해제
+            if not a.get("hit_applied") and a["timer"] >= self.SMITE_DROP * 0.3:
+                self._apply_skill_hit(a, shake=True, shake_scale=1.8)
+                a["hit_applied"] = True
+                a["hit_done"] += 1
+            # 강하 후 암전 빠르게 회복
+            a["darken"] = max(0.0, 1.0 - a["timer"] / self.SMITE_DROP)
+            if a["timer"] >= self.SMITE_DROP + self.CAST_GAP:
+                a["hit_applied"] = False
+                if a["hit_done"] >= a["hits"] or self.logic.battle_over:
+                    a["phase"] = "finish"; a["timer"] = 0.0
+                else:
+                    a["phase"] = "gather"; a["timer"] = 0.0
+        elif phase == "finish":
+            a["darken"] = 0.0
+            if a["timer"] >= self.CAST_END:
+                self.anim = None; self.effects = []
+                self._clear_total(); self.roll = None
+                self.logic.advance(); self._sync_turn()
+
     def _start_total(self, actor):
         """스킬 시작 시 Total 표시 초기화"""
         self.total_dmg = 0

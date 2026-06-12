@@ -7,6 +7,8 @@ from run_state import RUN
 from data import run_data
 
 NODE_STYLE = {
+    run_data.NODE_START:  {"color": (120, 170, 120), "label": "시작"},
+    run_data.NODE_MID:    {"color": (210, 140, 90),  "label": "중간"},
     run_data.NODE_BATTLE: {"color": (200, 90, 90),  "label": "전투"},
     run_data.NODE_ELITE:  {"color": (170, 70, 160), "label": "엘리트"},
     run_data.NODE_EVENT:  {"color": (90, 150, 200), "label": "이벤트"},
@@ -41,7 +43,7 @@ class MapScreen:
     def _node_rect(self, layer, col):
         W, H = self.W, self.H
         nL = len(RUN.layers)
-        margin_x = int(W * 0.10)
+        margin_x = int(W * 0.06)
         usable_x = W - margin_x * 2
         x = margin_x + int(usable_x * (layer / max(1, nL - 1)))
         # 세로 배치: 해당 층 노드 개수에 맞춰 균등
@@ -53,7 +55,10 @@ class MapScreen:
             y = (cy0 + cy1) // 2
         else:
             y = cy0 + int((cy1 - cy0) * (col / (nC - 1)))
+        # 층이 많으면(13단계) 반지름 축소
         rad = int(min(W, H) * 0.040)
+        if nL >= 10:
+            rad = int(min(W, H) * 0.030)
         return pygame.Rect(x - rad, y - rad, rad * 2, rad * 2)
 
     def _menu_rect(self):
@@ -78,6 +83,7 @@ class MapScreen:
                 return "menu"
             for (l, c) in self._reachable():
                 if self._node_rect(l, c).collidepoint(event.pos):
+                    play_click()
                     ntype = RUN.enter_node(l, c)
                     return ("node", (l, c), ntype)
         return None
@@ -141,7 +147,5 @@ class MapScreen:
                 draw_text(surf, style["label"], self.fonts["small_bold"], WHITE, r.centerx, r.centery)
 
         # 안내
-        if RUN.cur_layer < 0:
-            draw_text(surf, "출발할 노드를 선택하세요.", self.fonts["menu"], BLACK, W//2, int(H*0.85))
-        elif reachable:
+        if reachable:
             draw_text(surf, "다음 노드를 선택하세요.", self.fonts["menu"], BLACK, W//2, int(H*0.85))

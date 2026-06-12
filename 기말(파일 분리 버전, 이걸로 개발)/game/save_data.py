@@ -8,16 +8,27 @@
     "acts":     ["0막", "1막", ...],          # 열린 막 키 목록
     "chapters": {"1막": ["1장", ...], ...},   # 열린 장 목록
     "stages":   {"1막/1장": ["1-1","1-2"], ...}  # 열린 스테이지
+  },
+  "growth":  { "주인공": {...} },     # 레벨/포인트 — 회차 시작 시 초기화됨
+  "skills":  {                        # 스킬 — 회차가 끝나도 영구 보존
+    "owned":    [ {스킬 dict}, ... ],
+    "equipped": [ "스킬 이름", ... ]
   }
 }
 
-규칙:
+회차(로그라이크) 규칙:
+- 스킬: 영구 보존 (회차 간 유지, 여기 "skills" 에 저장)
+- 레벨 / 경험치 / 분배 포인트: 회차 시작 시 초기화 (reset_growth)
+- 아이템 / 골드: 회차 한정 (run_state 가 들고 있다가 버림)
+
+스토리 진행 규칙:
 - 처음에는 0막/0장/0-1 만 열림
 - 스테이지 클리어 → 같은 장의 다음 스테이지 언락
   마지막 스테이지 클리어 → 다음 장 언락 (첫 스테이지 포함)
   마지막 장 클리어 → 다음 막 언락 (첫 장/첫 스테이지 포함)
 """
 
+import copy
 import json
 import os
 
@@ -43,18 +54,22 @@ def _default_save():
         },
         "growth": {
             "주인공": {
-                "level":       1,
+                "level":       10,
                 "exp":         0,
-                "phys_level":  1,
-                "magic_level": 1,
+                "phys_level":  10,
+                "magic_level": 10,
                 "hp_bonus":    0,
                 "spd_bonus":   0,
                 "deal_bonus":  0,
                 "take_bonus":  0,
-                "basic_point": 0,   # 미분배 기초 포인트(물리/마법)
-                "extra_point": 0,   # 미분배 부가 포인트(체력/속도/딜/방어)
+                "basic_point": 0,    # 미분배 기초 포인트(물리/마법)
+                "extra_point": 10,   # 미분배 부가 포인트(체력/속도/딜/방어)
             }
-        }
+        },
+        "skills": {
+            "owned":    [],   # 보유 스킬 dict 목록 (영구)
+            "equipped": [],   # 장착 스킬 이름 목록 (최대 10)
+        },
     }
 
 # ── 전역 상태 ────────────────────────────────────────────────────────
@@ -82,6 +97,10 @@ def load():
                     "stages":   loaded.get("unlocked", {}).get("stages",   {"0막/0장": ["0-1"]}),
                 },
                 "growth": growth,
+                "skills": {
+                    "owned":    list(loaded.get("skills", {}).get("owned",    [])),
+                    "equipped": list(loaded.get("skills", {}).get("equipped", [])),
+                },
             }
         except Exception:
             _data = _default_save()
@@ -208,4 +227,28 @@ def get_growth(char="주인공"):
 
 def set_growth(data, char="주인공"):
     _data["growth"][char] = data
+    save()
+
+
+def reset_growth(char="주인공"):
+    """레벨/경험치/분배 포인트를 기본값으로 초기화 (회차 시작 시 호출)."""
+    _data["growth"][char] = dict(_default_save()["growth"]["주인공"])
+    save()
+
+
+# ── 영구 스킬 접근 ────────────────────────────────────────────────────
+def get_skills():
+    """(보유 스킬 dict 목록, 장착 스킬 이름 목록) 사본을 반환."""
+    sk = _data.get("skills") or {}
+    owned    = copy.deepcopy(sk.get("owned", []))
+    equipped = list(sk.get("equipped", []))
+    return owned, equipped
+
+
+def set_skills(owned, equipped_names):
+    """보유/장착 스킬을 영구 저장. owned 는 스킬 dict 목록, equipped_names 는 이름 목록."""
+    _data["skills"] = {
+        "owned":    copy.deepcopy(list(owned)),
+        "equipped": [str(n) for n in equipped_names],
+    }
     save()

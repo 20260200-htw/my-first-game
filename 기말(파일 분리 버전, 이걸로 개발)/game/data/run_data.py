@@ -18,9 +18,10 @@ REGION_INFO = {
     "북부": {"title": "북부 설원", "desc": "혹한이 지배하는 설원."},
 }
 
-# 구간 번호(1~5) → 노드 개수
-SEGMENT_NODE_COUNT = {1: 6, 2: 7, 3: 8, 4: 9, 5: 10}
+# 모든 구간: 시작 + 5노드 + 중간 + 5노드 + 보스 (좌우 직진 레인)
+SEGMENT_MID_NODES = 5   # 시작~중간, 중간~보스 사이 각 노드 수
 FINAL_SEGMENT = 6  # 마왕성
+FIRST_REGION = "중앙"   # 첫 구간 고정 지역
 
 # ══════════════════════════════════════════════════════════════════
 #   노드 타입
@@ -32,6 +33,8 @@ NODE_REWARD = "reward"
 NODE_SHOP   = "shop"
 NODE_BOSS   = "boss"
 NODE_MAW    = "maw"     # 최종 마왕
+NODE_START  = "start"   # 시작 지점 (다이얼로그)
+NODE_MID    = "mid"     # 중간 지점 (다이얼로그, 중간보스 가능)
 
 # 일반 노드 비율 (보스 전 마지막은 상점 확정으로 별도 처리)
 NODE_WEIGHTS = [
@@ -53,56 +56,10 @@ def roll_node_type():
 
 
 # ══════════════════════════════════════════════════════════════════
-#   지역별 적 풀 (기존 ENEMY_DEFS 이름 사용)
+#   적/사건/보상 배치 → data/encounter_data.py 로 이동
 # ══════════════════════════════════════════════════════════════════
-# 각 항목은 한 전투의 적 구성 (1웨이브). 추후 웨이브/적 추가 가능.
-REGION_ENEMIES = {
-    "중앙": {
-        "battle": [["말단병사"], ["말단병사", "말단병사"], ["Eat_slime1"]],
-        "elite":  [["벨라"], ["말단병사", "말단병사", "말단병사"]],
-        "boss":   {"enemies": ["벨라"], "name": "평원의 지배자 벨라"},
-    },
-    "동부": {
-        "battle": [["Eat_slime1"], ["Eat_slime1", "Eat_slime2"], ["말단병사"]],
-        "elite":  [["Eat_slime1", "Eat_slime2", "Eat_slime3"]],
-        "boss":   {"enemies": ["마리나"], "name": "해안의 검객 마리나"},
-    },
-    "서부": {
-        "battle": [["말단병사"], ["Eat_slime2"], ["말단병사", "Eat_slime1"]],
-        "elite":  [["말단병사", "말단병사", "말단병사"]],
-        "boss":   {"enemies": ["마리 따까리1", "마리 따까리2"], "name": "산적단 두목"},
-    },
-    "남부": {
-        "battle": [["Eat_slime3"], ["말단병사", "말단병사"], ["Eat_slime1", "Eat_slime2"]],
-        "elite":  [["벨라"]],
-        "boss":   {"enemies": ["벨라"], "name": "사막의 폭군"},
-    },
-    "북부": {
-        "battle": [["Eat_slime1"], ["말단병사"], ["Eat_slime2", "Eat_slime3"]],
-        "elite":  [["말단병사", "말단병사", "말단병사"]],
-        "boss":   {"enemies": ["마리나"], "name": "설원의 추격자"},
-    },
-}
-
-# 마왕성 4갈래 보스 + 최종 마왕
-MAW_BOSSES = [
-    {"enemies": ["벨라"],   "name": "마왕군 사천왕 · 벨라"},
-    {"enemies": ["마리나"], "name": "마왕군 사천왕 · 마리나"},
-    {"enemies": ["보스 마리"], "name": "마왕군 사천왕 · 마리"},
-    {"enemies": ["마리 따까리1", "마리 따까리2"], "name": "마왕군 사천왕 · 쌍둥이"},
-]
-MAW_FINAL = {"enemies": ["보스 마리"], "name": "마왕"}
-
-
-def pick_enemy_group(region, kind):
-    """지역의 battle/elite 구성 중 하나를 랜덤 선택."""
-    pools = REGION_ENEMIES.get(region, REGION_ENEMIES["중앙"])
-    groups = pools.get(kind, pools["battle"])
-    return list(random.choice(groups))
-
-
-def region_boss(region):
-    return REGION_ENEMIES.get(region, REGION_ENEMIES["중앙"])["boss"]
+# 구역×회차별 전투/엘리트/사건/보상/중간보스/보스 배치는 전부
+# data/encounter_data.py 의 REGION_PLAN / MAW_PLAN 에서 관리한다.
 
 
 def enemy_formation_for(n):
@@ -144,10 +101,11 @@ LEVELUP_EXTRA_POINT = 3   # 부가 능력치 포인트
 # ══════════════════════════════════════════════════════════════════
 #   시작 스킬 + 스킬 풀 (보상으로 획득)
 # ══════════════════════════════════════════════════════════════════
-def _skill(name, power, stype, count="단일", hits=1, motion="behind", desc=None):
+def _skill(name, power, stype, count="단일", hits=1, motion="behind",
+           side="적", tags=None, desc=None):
     return {
-        "name": name, "power": power, "type": stype, "side": "적",
-        "count": count, "hits": hits, "tags": [], "motion": motion,
+        "name": name, "power": power, "type": stype, "side": side,
+        "count": count, "hits": hits, "tags": list(tags or []), "motion": motion,
         "sprite": "", "desc": desc or [f"{stype} 공격."],
     }
 
@@ -157,26 +115,56 @@ STARTER_SKILLS = [
     _skill("마탄",   28, "마법", motion="cast",   desc=["기본적인 마법 공격."]),
 ]
 
-# 보상으로 획득 가능한 스킬 풀
+# 보상/상점으로 획득 가능한 스킬 풀
+# 유형: 단일 강공 / 다단히트 / 광역(2~5인) / 필중 / 회복(아군)
 SKILL_POOL = [
-    _skill("강타",     55, "물리", desc=["강한 일격을 가한다."]),
-    _skill("연속 베기", 22, "물리", hits=3, desc=["3회 연속 공격한다."]),
-    _skill("관통",     45, "물리", desc=["방어를 무시하는 일격."]),
-    _skill("화염탄",   50, "마법", motion="cast", desc=["불꽃으로 적을 태운다."]),
-    _skill("빙결",     40, "마법", motion="cast", desc=["냉기로 적을 얼린다."]),
-    _skill("뇌격",     48, "마법", motion="cast", desc=["번개로 적을 친다."]),
-    _skill("난무",     18, "물리", hits=4, desc=["4회 연속 난타."]),
-    _skill("일섬",     70, "물리", desc=["혼신의 일격."]),
-    _skill("폭렬 마법", 65, "마법", motion="cast", desc=["강력한 폭발 마법."]),
-    _skill("연환 마탄", 20, "마법", hits=3, motion="cast", desc=["마탄을 3회 발사."]),
+    # ── 단일 물리 ──
+    _skill("강타",       55, "물리", desc=["강한 일격을 가한다."]),
+    _skill("관통",       45, "물리", tags=["필중"], desc=["반드시 적중하는 일격."]),
+    _skill("일섬",       72, "물리", desc=["혼신의 단일 일격."]),
+    _skill("처형",       90, "물리", desc=["막대한 피해를 주는 강공."]),
+    # ── 다단 물리 ──
+    _skill("연속 베기",   22, "물리", hits=3, desc=["3회 연속 공격한다."]),
+    _skill("난무",       16, "물리", hits=4, desc=["4회 연속 난타."]),
+    _skill("폭풍 검무",   13, "물리", hits=5, desc=["5회 연속 휘몰아친다."]),
+    # ── 광역 물리 ──
+    _skill("회전 베기",   34, "물리", count="2인", desc=["적 2명을 동시에 벤다."]),
+    _skill("대지 가르기", 30, "물리", count="5인", desc=["적 전체를 강타한다."]),
+    # ── 단일 마법 ──
+    _skill("화염탄",     50, "마법", motion="cast", desc=["불꽃으로 적을 태운다."]),
+    _skill("빙결",       42, "마법", motion="cast", tags=["필중"], desc=["반드시 적중하는 냉기."]),
+    _skill("뇌격",       48, "마법", motion="cast", desc=["번개로 적을 친다."]),
+    _skill("폭렬 마법",   68, "마법", motion="cast", desc=["강력한 폭발 마법."]),
+    _skill("운석 낙하",   95, "마법", motion="cast", desc=["거대한 운석을 떨군다."]),
+    # ── 다단 마법 ──
+    _skill("연환 마탄",   18, "마법", hits=3, motion="cast", desc=["마탄을 3회 발사."]),
+    _skill("마력 폭주",   14, "마법", hits=5, motion="cast", desc=["마력탄을 5회 난사."]),
+    # ── 광역 마법 ──
+    _skill("화염 폭풍",   30, "마법", count="5인", motion="cast", desc=["적 전체를 불태운다."]),
+    _skill("빙하 시대",   26, "마법", count="5인", motion="cast", tags=["필중"], desc=["적 전체를 얼린다."]),
+    # ── 회복(자신) ──
+    _skill("재생",       40, "마법", side="자신", count="단일", motion="cast",
+           tags=["회복", "지원"], desc=["자신의 체력을 회복한다."]),
+    _skill("대치유",     70, "마법", side="자신", count="단일", motion="cast",
+           tags=["회복", "지원"], desc=["자신의 체력을 크게 회복한다."]),
 ]
 
 def roll_skill_choices(n=3, owned_names=None):
-    """보상용 스킬 후보 n개 추첨 (중복 이름 제외 가능)."""
-    owned_names = owned_names or []
-    pool = [s for s in SKILL_POOL]
+    """보상용 스킬 후보 n개 추첨 (이미 보유한 이름 제외).
+    스킬이 영구 보존되므로 중복 획득을 막는다. 남은 게 없으면 빈 목록."""
+    owned_names = set(owned_names or [])
+    pool = [s for s in SKILL_POOL if s["name"] not in owned_names]
     random.shuffle(pool)
     return pool[:n]
+
+
+def skill_by_name(name):
+    """스킬 풀(+시작 스킬)에서 이름으로 스킬 정의 사본을 찾는다. 없으면 None."""
+    import copy
+    for s in SKILL_POOL + STARTER_SKILLS:
+        if s["name"] == name:
+            return copy.deepcopy(s)
+    return None
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -196,14 +184,7 @@ ITEMS = {
     "불사의 깃털":  {"name": "불사의 깃털",  "effect": "revive",      "value": 1,  "desc": "전투당 1회, 치명상 시 체력 1로 생존"},
 }
 
-# 구간 보스별 특별 아이템 (보스 이름 → 아이템 키)
-BOSS_DROP = {
-    "평원의 지배자 벨라": "낡은 검",
-    "해안의 검객 마리나": "신속의 장화",
-    "산적단 두목":       "황금 주머니",
-    "사막의 폭군":       "광전사의 인장",
-    "설원의 추격자":     "강철 갑옷",
-}
+# 구간 보스의 확정 드랍은 encounter_data 의 boss 정의 안 "drop" 키로 지정한다.
 
 def roll_item_choices(n=3, owned_keys=None):
     """보상용 아이템 후보 n개 추첨 (이미 보유한 것 제외)."""
@@ -211,6 +192,51 @@ def roll_item_choices(n=3, owned_keys=None):
     pool = [k for k in ITEMS.keys() if k not in owned_keys]
     random.shuffle(pool)
     return pool[:n]
+
+
+def items_to_passives(item_keys):
+    """보유 아이템들을 전투용 패시브(effects) 한 덩어리로 변환.
+    combatant 의 _iter_effects 가 읽는 형식.
+    전투에서 직접 반영되는 효과만 변환 (hp_flat/exp/gold 는 별도 처리)."""
+    effects = []
+    descs = []
+    # 합산용
+    atk_pct = 0
+    def_pct = 0
+    lowhp_atk = 0
+    lifesteal = 0
+    regen = 0
+    revive = 0
+    for k in item_keys:
+        it = ITEMS.get(k)
+        if not it:
+            continue
+        eff, val = it["effect"], it["value"]
+        if eff == "atk_pct":
+            atk_pct += val
+        elif eff == "def_pct":
+            def_pct += val
+        elif eff == "lowhp_atk":
+            lowhp_atk += val
+        elif eff == "lifesteal":
+            lifesteal += val
+        elif eff == "regen_pct":
+            regen += val
+        elif eff == "revive":
+            revive += val
+    if atk_pct:
+        effects.append({"kind": "deal_mult", "value": 1 + atk_pct / 100.0})
+        descs.append(f"가하는 피해 +{atk_pct}%")
+    if def_pct:
+        effects.append({"kind": "take_mult", "value": 1 - def_pct / 100.0})
+        descs.append(f"받는 피해 -{def_pct}%")
+    if lowhp_atk:
+        # 자신 체력 50% 이하일 때 주는 피해 증가
+        effects.append({"kind": "deal_mult", "value": 1 + lowhp_atk / 100.0,
+                        "if_self_hp_ratio_below": 0.5})
+        descs.append(f"체력 50%↓ 시 가하는 피해 +{lowhp_atk}%")
+    meta = {"lifesteal": lifesteal, "regen": regen, "revive": revive}
+    return effects, descs, meta
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -229,3 +255,69 @@ SHOP_HEAL_PCT = 30
 # ══════════════════════════════════════════════════════════════════
 # 기존 ALLY_DEFS 의 스토리 동료를 합류 동료로 재활용
 JOINABLE_ALLIES = ["금강", "아우렐리우스", "마리", "막심 오그네프"]
+
+
+# ══════════════════════════════════════════════════════════════════
+#   구간 다이얼로그 (구역 × 지점 × 방문횟수)
+# ══════════════════════════════════════════════════════════════════
+# 지점: "start"(시작) / "mid"(중간) / "boss"(보스)
+# 방문횟수: 1회차, 2회차... (현재 회차에서 그 구역을 몇 번째 방문하는지)
+# 형식: story_dialogue 의 cuts 형식 (background/characters/speaker/text...)
+# 내용은 임시. 나중에 교체.
+
+def _cut(speaker, text, affiliation="", sprite=None, x=0.5, y=1.0, scale=0.75, bg=""):
+    cut = {"characters": [], "background": bg,
+           "affiliation": affiliation, "speaker": speaker, "text": text}
+    if sprite:
+        cut["characters"] = [{"sprite": sprite, "x": x, "y": y, "scale": scale}]
+    return cut
+
+
+def _placeholder_dialogue(region, spot, visit):
+    """임시 다이얼로그 한 컷. 구역/지점/방문횟수를 명시."""
+    spot_name = {"start": "시작 지점", "mid": "중간 지점", "boss": "보스 지점"}[spot]
+    title = REGION_INFO.get(region, {}).get("title", region)
+    return [
+        _cut("주인공", f"({title} — {spot_name} / {visit}회차 방문)"),
+        _cut("주인공", "(여기에 대사가 들어갈 예정입니다.)"),
+    ]
+
+
+# 구역별 커스텀 다이얼로그를 여기에 채운다.
+# REGION_DIALOGUE[region][spot][visit] = cuts
+# 없으면 _placeholder_dialogue 로 대체된다.
+REGION_DIALOGUE = {
+    # 예시 자리 (실제 내용은 추후):
+    # "중앙": {
+    #     "start": {1: [ _cut("주인공", "중앙 평원에 도착했다.") ]},
+    #     "mid":   {1: [...]},
+    #     "boss":  {1: [...]},
+    # },
+}
+
+# 마왕성 다이얼로그
+MAW_DIALOGUE = {
+    "start": [_cut("주인공", "(마왕성 — 시작 지점)"), _cut("주인공", "(드디어 마왕성에 들어섰다.)")],
+    "mid":   [_cut("주인공", "(마왕성 — 중간 지점)")],
+    # 보스/마왕 직전 대사는 보스 노드에서
+}
+
+
+def dialogue_for(region, spot, visit):
+    """구역/지점/방문횟수에 맞는 다이얼로그 cuts 반환."""
+    if region == "마왕성":
+        return MAW_DIALOGUE.get(spot, _placeholder_dialogue(region, spot, visit))
+    reg = REGION_DIALOGUE.get(region, {})
+    spot_map = reg.get(spot, {})
+    # 해당 방문횟수 없으면 가장 가까운 낮은 회차, 그것도 없으면 임시
+    if visit in spot_map:
+        return spot_map[visit]
+    avail = sorted(k for k in spot_map.keys() if k <= visit)
+    if avail:
+        return spot_map[avail[-1]]
+    return _placeholder_dialogue(region, spot, visit)
+
+
+# ══════════════════════════════════════════════════════════════════
+#   중간 지점 중간보스 → encounter_data 의 "mid_boss" 키로 이동
+# ══════════════════════════════════════════════════════════════════

@@ -12,28 +12,46 @@ SEL_COL  = (60, 140, 220)
 
 
 class RewardScreen:
-    """전투 승리 후 보상 선택.
+    """전투 승리 후 / 보상 노드의 보상 선택.
     kind="skill" 이면 스킬 3택1, "item" 이면 아이템 3택1.
-    보스 보상은 special_item 지정 시 확정 지급 + 추가 선택.
+    fixed: 후보를 직접 지정 (스킬 이름 목록 / 아이템 키 목록). 없으면(None) 랜덤 추첨.
+           False 면 후보 없이 확정 지급(special_item)만 표시.
+           encounter_data 의 reward 정의 {"kind":..., "choices":[...]} 가 여기로 들어온다.
+    special_item 지정 시 확정 지급 + 추가 선택 (보스 드랍 / 사건 전투 드랍).
     반환값: "done"
     """
 
-    def __init__(self, screen, W, H, fonts, kind="skill", special_item=None, gold=0):
+    def __init__(self, screen, W, H, fonts, kind="skill", special_item=None, gold=0,
+                 fixed=None):
         self.screen = screen
         self.W, self.H = W, H
         self.fonts = fonts
         self.kind = kind
         self.gold = gold
-        self.special_item = special_item  # 보스 확정 드랍 아이템 키
+        self.special_item = special_item  # 확정 드랍 아이템 키
         self._special_given = False
         self.hover = None
         self.taken = False
 
         if kind == "skill":
             owned = [s["name"] for s in RUN.skills_owned]
-            self.choices = run_data.roll_skill_choices(3, owned)
+            self.choices = []
+            if fixed and fixed is not False:
+                # 지정 후보 중 아직 모르는 스킬만
+                for name in fixed:
+                    sk = run_data.skill_by_name(name)
+                    if sk and sk["name"] not in owned:
+                        self.choices.append(sk)
+            if not self.choices and fixed is not False:
+                self.choices = run_data.roll_skill_choices(3, owned)
         else:
-            self.choices = run_data.roll_item_choices(3, RUN.items)
+            self.choices = []
+            if fixed and fixed is not False:
+                # 지정 후보 중 아직 없는 아이템만
+                self.choices = [k for k in fixed
+                                if k in run_data.ITEMS and k not in RUN.items]
+            if not self.choices and fixed is not False:
+                self.choices = run_data.roll_item_choices(3, RUN.items)
 
         # 골드 지급 (보상 진입 시 1회)
         if gold:
@@ -72,9 +90,10 @@ class RewardScreen:
                     self.hover = i; break
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._skip_rect().collidepoint(event.pos):
-                return "done"
+                play_click(); return "done"
             for i in range(len(self.choices)):
                 if self._card_rect(i).collidepoint(event.pos):
+                    play_click("confirm")
                     self._take(i)
                     return "done"
         return None
@@ -104,7 +123,7 @@ class RewardScreen:
             draw_text(surf, f"골드 +{self.gold}", self.fonts["hint_bold"], (200,160,40), W//2, int(H*0.25))
         if self._special_given:
             it = run_data.ITEMS[self.special_item]
-            draw_text(surf, f"보스 전리품 획득: {it['name']}", self.fonts["hint_bold"], (170,70,160),
+            draw_text(surf, f"전리품 획득: {it['name']}", self.fonts["hint_bold"], (170,70,160),
                       W//2, int(H*0.29))
 
         for i, choice in enumerate(self.choices):

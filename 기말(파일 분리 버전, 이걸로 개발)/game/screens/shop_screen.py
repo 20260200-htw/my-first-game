@@ -68,6 +68,7 @@ class ShopScreen:
                 if e["sold"]:
                     continue
                 if self._buy_rect(i).collidepoint(event.pos):
+                    play_click("buy")
                     self._buy(i)
                     return None
         return None

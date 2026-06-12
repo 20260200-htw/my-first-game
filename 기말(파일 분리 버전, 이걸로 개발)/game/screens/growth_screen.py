@@ -5,6 +5,8 @@ _sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath
 import save_data
 from utils import *
 from data.characters_data import ALLY_DEFS
+from data import run_data
+from run_state import RUN
 
 PANEL_BG = (245, 245, 245)
 BAR_BG   = (210, 210, 210)
@@ -13,10 +15,11 @@ BTN_UP   = ( 60, 180,  80)
 BTN_DN   = (200,  60,  60)
 BTN_DIS  = (180, 180, 180)
 DIV      = (200, 200, 200)
+ITEM_BG  = (238, 238, 238)
 
 
 def _exp_to_next(level):
-    return level * 100
+    return run_data.exp_to_next(level)
 
 
 def _left_pts(g):
@@ -71,7 +74,42 @@ class GrowthScreen:
 
     def _skill_rect(self):
         W, H = self.W, self.H
-        return pygame.Rect(int(W*0.54), int(H*0.82), int(W*0.38), 36)
+        return pygame.Rect(int(W*0.54), int(H*0.76), int(W*0.38), 36)
+
+    def _item_rect(self):
+        """우측 하단 '아이템' 버튼 (스킬 배치 버튼 바로 아래)."""
+        W, H = self.W, self.H
+        sr = self._skill_rect()
+        return pygame.Rect(sr.x, sr.bottom + int(H*0.018), sr.width, sr.height)
+
+    # ── 행/버튼 좌표 (draw 와 click 이 공유하는 단일 기준) ─────────
+    def _rows_left(self):
+        """좌측: 물리/마법 레벨. [(cy, key)]"""
+        H = self.H
+        return [
+            (int(H*0.72), "phys_level"),
+            (int(H*0.83), "magic_level"),
+        ]
+
+    def _rows_right(self):
+        """우측: 부가 스탯 4종. [(cy, key)]"""
+        H = self.H
+        return [
+            (int(H*0.26), "hp_bonus"),
+            (int(H*0.38), "spd_bonus"),
+            (int(H*0.50), "deal_bonus"),
+            (int(H*0.62), "take_bonus"),
+        ]
+
+    def _lr_btn_x(self):
+        """좌측 ▲/▼ x좌표."""
+        W = self.W
+        return int(W*0.30), int(W*0.40)
+
+    def _rr_btn_x(self):
+        """우측 ▲/▼ x좌표."""
+        W = self.W
+        return int(W*0.76), int(W*0.86)
 
     # ── 이벤트 ────────────────────────────────────────────────────
     def handle_event(self, event):
@@ -89,39 +127,33 @@ class GrowthScreen:
         rp = _right_pts(g)
 
         if self._back_rect().collidepoint(pos):
-            self._save(); return "back"
+            play_click("cancel"); self._save(); return "back"
         if self._skill_rect().collidepoint(pos):
-            return "skill_config"
+            play_click(); return "skill_config"
+        if self._item_rect().collidepoint(pos):
+            play_click(); return "item_view"
 
         # 좌측: 물리/마법 레벨 (기초 포인트 사용)
-        rows_l = [
-            (int(H*0.72), "phys_level"),
-            (int(H*0.83), "magic_level"),
-        ]
-        up_x  = int(W*0.30)
-        dn_x  = int(W*0.40)
-        for cy, key in rows_l:
+        up_x, dn_x = self._lr_btn_x()
+        for cy, key in self._rows_left():
             if self._btn(up_x, cy).collidepoint(pos) and lp > 0:
+                play_click()
                 g[key] += 1
                 g["basic_point"] = g.get("basic_point", 0) - 1
             if self._btn(dn_x, cy).collidepoint(pos) and g[key] > 1:
+                play_click()
                 g[key] -= 1
                 g["basic_point"] = g.get("basic_point", 0) + 1
 
         # 우측: 스탯 (부가 포인트 사용)
-        rows_r = [
-            (int(H*0.28), "hp_bonus"),
-            (int(H*0.42), "spd_bonus"),
-            (int(H*0.56), "deal_bonus"),
-            (int(H*0.70), "take_bonus"),
-        ]
-        up_rx = int(W*0.76)
-        dn_rx = int(W*0.86)
-        for cy, key in rows_r:
+        up_rx, dn_rx = self._rr_btn_x()
+        for cy, key in self._rows_right():
             if self._btn(up_rx, cy).collidepoint(pos) and rp > 0:
+                play_click()
                 g[key] += 1
                 g["extra_point"] = g.get("extra_point", 0) - 1
             if self._btn(dn_rx, cy).collidepoint(pos) and g[key] > 0:
+                play_click()
                 g[key] -= 1
                 g["extra_point"] = g.get("extra_point", 0) + 1
 
@@ -186,46 +218,47 @@ class GrowthScreen:
         draw_text(surf, f"남은 포인트  {lp}", self.fonts["hint"], pt_col, lx, int(H*0.615))
 
         # 물리 / 마법 레벨
-        rows_l = [
-            (int(H*0.72), "물리 레벨", "phys_level"),
-            (int(H*0.83), "마법 레벨", "magic_level"),
-        ]
+        labels_l = {"phys_level": "물리 레벨", "magic_level": "마법 레벨"}
         lbl_x = int(W*0.07)
         val_x = int(W*0.35)
-        up_x  = int(W*0.30)
-        dn_x  = int(W*0.40)
-        for cy, lbl, key in rows_l:
-            draw_text_left(surf, lbl, self.fonts["hint"], BLACK, lbl_x, cy)
+        up_x, dn_x = self._lr_btn_x()
+        for cy, key in self._rows_left():
+            draw_text_left(surf, labels_l[key], self.fonts["hint"], BLACK, lbl_x, cy)
             draw_text(surf, str(g[key]), self.fonts["menu"], BLACK, val_x, cy)
             self._updown(surf, up_x, dn_x, cy, lp > 0, g[key] > 1)
 
         # ══ 우측 ════════════════════════════════════════════════
         lbl_rx = int(W*0.53)
         val_rx = int(W*0.93)
-        up_rx  = int(W*0.76)
-        dn_rx  = int(W*0.86)
+        up_rx, dn_rx = self._rr_btn_x()
 
         # 남은 포인트 (우측)
         rpt_col = (180,40,40) if rp == 0 else (30,130,60)
         draw_text(surf, f"남은 포인트  {rp}", self.fonts["hint"], rpt_col, int(W*0.73), int(H*0.17))
 
-        rows_r = [
-            (int(H*0.28), "체력",          f"{self._hp():,}",    "hp_bonus",   "(1당 HP +10)"),
-            (int(H*0.42), "속도",          str(self._speed()),   "spd_bonus",  "(5당 +1)"),
-            (int(H*0.56), "가하는 피해",   f"+{self._deal()}%",  "deal_bonus", "(5당 +1%)"),
-            (int(H*0.70), "받는 피해 감소",f"-{self._take()}%",  "take_bonus", "(5당 +1%)"),
-        ]
-        for cy, lbl, val, key, hint in rows_r:
+        meta_r = {
+            "hp_bonus":   ("체력",           f"{self._hp():,}",   "(1당 HP +10)"),
+            "spd_bonus":  ("속도",           str(self._speed()),  "(5당 +1)"),
+            "deal_bonus": ("가하는 피해",    f"+{self._deal()}%", "(5당 +1%)"),
+            "take_bonus": ("받는 피해 감소", f"-{self._take()}%", "(5당 +1%)"),
+        }
+        for cy, key in self._rows_right():
+            lbl, val, hint = meta_r[key]
             draw_text_left(surf, lbl,  self.fonts["menu"], BLACK,  lbl_rx, cy)
             draw_text_left(surf, hint, self.fonts["hint"], GRAY_D, lbl_rx, cy+int(H*0.038))
             draw_text(surf, val, self.fonts["menu"], BLACK, val_rx, cy)
             self._updown(surf, up_rx, dn_rx, cy, rp > 0, g[key] > 0)
 
-        # 스킬 설정
+        # 스킬 배치 버튼
         sr = self._skill_rect()
-        pygame.draw.rect(surf, PANEL_BG, sr, border_radius=5)
-        pygame.draw.rect(surf, DIV,      sr, 1, border_radius=5)
-        draw_text(surf, "스킬  [설정]  (미구현)", self.fonts["menu"], GRAY_D, sr.centerx, sr.centery)
+        pygame.draw.rect(surf, BLACK, sr, border_radius=5)
+        eq_n = len(RUN.skills_equipped)
+        draw_text(surf, f"스킬 배치  ({eq_n}/10)", self.fonts["menu"], WHITE, sr.centerx, sr.centery)
+
+        # 아이템 버튼 (스킬 배치처럼 전용 화면으로 이동)
+        ir = self._item_rect()
+        pygame.draw.rect(surf, BLACK, ir, border_radius=5)
+        draw_text(surf, f"아이템  ({len(RUN.items)})", self.fonts["menu"], WHITE, ir.centerx, ir.centery)
 
     def _updown(self, surf, up_cx, dn_cx, cy, can_up, can_dn):
         for cx, lbl, active in [(up_cx,"▲",can_up),(dn_cx,"▼",can_dn)]:

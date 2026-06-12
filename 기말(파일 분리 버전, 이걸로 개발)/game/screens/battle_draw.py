@@ -5,6 +5,163 @@ from data.battle_presets import ENEMY_FORMATIONS, ALLY_FORMATIONS
 
 
 class BattleDrawMixin:
+    def _draw_smite_overlay(self, surf, to_sx, to_sy):
+        """smite: 화면 암전 + 대상 위로 내려오는 빛기둥/착탄 섬광.
+        스킬 옵션:
+          - fx_overlay (기본 False): 기본은 스킬이 지정한 effect_self/effect_target
+            이미지만 사용한다. True 로 켜면 빛기둥/섬광 절차 연출을 추가로 그린다.
+          - fx_color   (기본 (255,245,200)): 빛기둥/섬광/링 색 (R,G,B)
+          - fx_darken  (기본 True): 화면 암전 사용 여부
+        """
+        import math
+        W, H = self.W, self.H
+        a = self.anim
+        skill = a.get("skill", {})
+        if not skill.get("fx_overlay", False):
+            return   # 절차적 연출 끔 → 스킬 이미지 이펙트만 보임
+        col = tuple(skill.get("fx_color", (255, 245, 200)))[:3]
+        use_darken = skill.get("fx_darken", True)
+        darken = max(0.0, min(1.0, a.get("darken", 0.0))) if use_darken else 0.0
+        if darken > 0:
+            ov = pygame.Surface((W, H), pygame.SRCALPHA)
+            ov.fill((10, 6, 24, int(150 * darken)))
+            surf.blit(ov, (0, 0))
+        prim = a.get("primary")
+        if prim in self.enemies:
+            pi = self.enemies.index(prim); tx, ty = self._enemy_positions()[pi]
+        elif prim in self.allies:
+            pi = self.allies.index(prim); tx, ty = self._ally_positions()[pi]
+        else:
+            return
+        cx = to_sx(tx); cy = to_sy(ty - int(H * 0.10))
+        phase = a.get("phase")
+        if phase == "gather":
+            p = min(1.0, a["timer"] / self.SMITE_GATHER)
+            top = 0
+            bottom = int(top + (cy - top) * p)
+            halfw = max(2, int(W * 0.06 * (1.0 - 0.5 * p)))
+            if bottom > top:
+                pillar = pygame.Surface((halfw * 2, bottom - top), pygame.SRCALPHA)
+                ph = pillar.get_height()
+                for yy in range(0, ph, 2):
+                    aa = int(120 * (yy / max(1, ph)))
+                    pygame.draw.line(pillar, (col[0], col[1], col[2], aa), (0, yy), (halfw * 2, yy))
+                surf.blit(pillar, (cx - halfw, top))
+            r = max(1, int(W * 0.02 * (0.4 + 0.6 * p)))
+            glow = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (min(255,col[0]+20), min(255,col[1]+20), min(255,col[2]+20), 180), (r, r), r)
+            surf.blit(glow, (cx - r, cy - r))
+        elif phase == "strike":
+            p = min(1.0, a["timer"] / self.SMITE_DROP)
+            flash_a = int(220 * (1.0 - p))
+            if flash_a > 0:
+                halfw = int(W * 0.05)
+                beam = pygame.Surface((halfw * 2, H), pygame.SRCALPHA)
+                beam.fill((min(255,col[0]+30), min(255,col[1]+30), min(255,col[2]+30), flash_a))
+                surf.blit(beam, (cx - halfw, 0))
+            r = int(W * 0.03 + W * 0.10 * p)
+            ring = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(ring, (col[0], col[1], col[2], int(180 * (1 - p))), (r, r), r,
+                               max(2, int(W * 0.01 * (1 - p)) + 1))
+            surf.blit(ring, (cx - r, cy - r))
+
+    def _draw_charge_overlay(self, surf, to_sx, to_sy):
+        """charge: 시전자 주변에 모여드는 차징 오라 + 발사 링.
+        스킬 옵션:
+          - fx_overlay (기본 False): 기본은 스킬 이미지 이펙트만 사용.
+            True 로 켜면 차징 오라/링 절차 연출을 추가로 그린다.
+          - fx_color   (기본 (180,220,255)): 오라/링 색 (R,G,B)
+        """
+        import math
+        W, H = self.W, self.H
+        a = self.anim
+        skill = a.get("skill", {})
+        if not skill.get("fx_overlay", False):
+            return
+        col = tuple(skill.get("fx_color", (180, 220, 255)))[:3]
+        actor = a.get("actor")
+        if actor in self.allies:
+            ai = self.allies.index(actor); ax, ay = self._ally_positions()[ai]
+        elif actor in self.enemies:
+            ai = self.enemies.index(actor); ax, ay = self._enemy_positions()[ai]
+        else:
+            return
+        ox, oy = self._anim_actor_offset(actor)
+        cx = to_sx(ax + ox); cy = to_sy(ay + oy - int(H * 0.08))
+        phase = a.get("phase")
+        if phase == "charge":
+            p = min(1.0, a["timer"] / self.CHARGE_TIME)
+            for k in range(10):
+                ang = (k / 10) * 2 * math.pi + a["timer"] * 0.004
+                dist = int(W * 0.10 * (1.0 - p)) + int(W * 0.01)
+                px = cx + int(math.cos(ang) * dist)
+                py = cy + int(math.sin(ang) * dist * 0.7)
+                rad = max(1, int(W * 0.006 * p) + 1)
+                dot = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
+                pygame.draw.circle(dot, (col[0], col[1], col[2], int(200 * p)), (rad, rad), rad)
+                surf.blit(dot, (px - rad, py - rad))
+            r = max(1, int(W * 0.015 * (0.3 + 0.9 * p)))
+            glow = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (min(255,col[0]+30), min(255,col[1]+15), min(255,col[2]), 160), (r, r), r)
+            surf.blit(glow, (cx - r, cy - r))
+        elif phase == "burst":
+            p = min(1.0, a["timer"] / self.CHARGE_HIT)
+            r = int(W * 0.02 + W * 0.08 * p)
+            ring = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(ring, (col[0], col[1], col[2], int(200 * (1 - p))), (r, r), r,
+                               max(2, int(W * 0.008 * (1 - p)) + 1))
+            surf.blit(ring, (cx - r, cy - r))
+
+    def _opaque_bottom_gap(self, surf):
+        """스프라이트 하단의 투명 여백 높이(px)를 구한다.
+        midbottom 정렬 시 이 여백만큼 위로 떠 보이므로, 이 값으로 보정한다.
+        결과는 surface 객체에 캐시한다."""
+        if surf is None:
+            return 0
+        cached = getattr(surf, "_bottom_gap", None)
+        if cached is not None:
+            return cached
+        w, h = surf.get_size()
+        gap = 0
+        try:
+            for y in range(h - 1, -1, -1):
+                row_opaque = False
+                for x in range(0, w, max(1, w // 24)):   # 가로는 듬성듬성 샘플링
+                    if surf.get_at((x, y))[3] > 8:        # 알파 > 8 이면 내용 있음
+                        row_opaque = True
+                        break
+                if row_opaque:
+                    break
+                gap += 1
+        except Exception:
+            gap = 0
+        try:
+            surf._bottom_gap = gap
+        except Exception:
+            pass
+        return gap
+
+    def _draw_hit_flash(self, combatant, spr, spr_rect):
+        """피격 시 빨간 반투명 오버레이. 뒤로 밀린 동안 빨갛고,
+        제자리로 복귀하는 만큼 빨강도 함께 옅어진다 (움찔과 동기화)."""
+        ft = getattr(combatant, "hit_flash_t", 0)
+        if ft <= 0 or spr is None:
+            return
+        # 남은 시간 비율(1→0)에 비례해 빨강 알파 감쇠 → 움찔 복귀와 싱크
+        ratio = max(0.0, min(1.0, ft / 0.22))
+        alpha = int(150 * ratio)
+        if alpha <= 0:
+            return
+        try:
+            red = spr.copy()
+            red.fill((255, 60, 60, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            red.set_alpha(alpha)
+            self.screen.blit(red, spr_rect)
+        except Exception:
+            s = pygame.Surface((spr_rect.width, spr_rect.height), pygame.SRCALPHA)
+            s.fill((220, 0, 0, alpha))
+            self.screen.blit(s, spr_rect)
+
     def _draw_buff_row(self, combatant, cx, top_y, icon_size, centered=True):
         """버프 아이콘들을 가로로 나열. 좌하단 중첩, 우하단 지속시간."""
         buffs = getattr(combatant, "active_buffs", [])
@@ -36,16 +193,43 @@ class BattleDrawMixin:
             else:
                 pygame.draw.rect(surf, (70, 70, 90), rect)
                 pygame.draw.rect(surf, WHITE, rect, 1)
-                draw_text(surf, b["name"][:1], small, WHITE, rect.centerx, rect.centery)
-            # 좌하단 중첩 수 (2 이상일 때만)
+                # 아이콘 없을 때 이름 첫 글자도 아이콘 크기에 맞춰 스케일
+                self._blit_scaled_number(b["name"][:1], rect.centerx, rect.centery,
+                                         icon_size, anchor="center", color=WHITE)
+            # 중첩 수만 표시 (2 이상일 때, 우하단). 지속 턴은 정보창 툴팁에.
+            # 숫자 크기는 아이콘 크기(=줌)에 비례 → 축소 시 작아지고 확대 시 커짐.
             if b["stacks"] > 1:
-                self._draw_text_outlined(str(b["stacks"]), small, WHITE, (0,0,0),
-                                         rect.left + int(icon_size*0.18), rect.bottom - int(icon_size*0.18))
-            # 우하단 지속시간 (999 같은 영구는 생략)
-            dur = b["duration"]
-            if dur < 99:
-                self._draw_text_outlined(str(dur), small, (255,230,120), (0,0,0),
-                                         rect.right - int(icon_size*0.18), rect.bottom - int(icon_size*0.18))
+                self._blit_scaled_number(str(b["stacks"]),
+                                         rect.right - int(icon_size*0.04),
+                                         rect.bottom - int(icon_size*0.04),
+                                         icon_size, anchor="br", color=(255, 255, 255))
+
+    def _blit_scaled_number(self, text, x, y, icon_size, anchor="br", color=(255,255,255)):
+        """숫자/짧은 텍스트를 icon_size 에 비례한 크기로 렌더(외곽선 포함).
+        anchor: 'br'=우하단 기준, 'center'=중앙 기준. 줌에 따라 크기가 변한다."""
+        surf = self.screen
+        base = self.fonts["small_bold"]
+        # 기준 폰트로 렌더한 뒤 목표 높이로 스케일 (목표 높이 = 아이콘의 약 45%)
+        target_h = max(8, int(icon_size * 0.48))
+        # 외곽선용으로 검정/흰 두 번
+        def render_scaled(col):
+            t = base.render(text, True, col)
+            tw, th = t.get_size()
+            if th <= 0:
+                return t
+            scale = target_h / th
+            return pygame.transform.smoothscale(t, (max(1, int(tw*scale)), target_h))
+        body = render_scaled(color)
+        outline = render_scaled((0, 0, 0))
+        bw, bh = body.get_size()
+        if anchor == "br":
+            ox, oy = x - bw, y - bh
+        else:  # center
+            ox, oy = x - bw // 2, y - bh // 2
+        # 외곽선 (4방향 1px 오프셋)
+        for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+            surf.blit(outline, (ox+dx, oy+dy))
+        surf.blit(body, (ox, oy))
 
     def _enemy_positions(self):
         from data.battle_presets import ENEMY_FORMATIONS
@@ -155,6 +339,22 @@ class BattleDrawMixin:
                     cdx = (tx - W / 2)
                     cdy = (ty - H / 2) - up
                 cmd_cam = (cdx, cdy, z)
+            elif self.anim["type"] == "charge":
+                # 차징: 시전자에 고정 줌인 (대상으로 이동하지 않음)
+                up = int(H * 0.13)
+                cmd_cam = ((ax - W / 2), (ay - H / 2) - up, 1.45)
+            elif self.anim["type"] == "smite":
+                # 강하: 대상(primary)에 고정 줌인
+                a = self.anim
+                prim = a["primary"]
+                if prim in self.enemies:
+                    pi = self.enemies.index(prim); tx, ty = self._enemy_positions()[pi]
+                elif prim in self.allies:
+                    pi = self.allies.index(prim); tx, ty = self._ally_positions()[pi]
+                else:
+                    tx, ty = ax, ay
+                up = int(H * 0.13)
+                cmd_cam = ((tx - W / 2), (ty - H / 2) - up, 1.4)
             else:
                 ox, oy = self._anim_actor_offset(self.anim["actor"])
                 ax += ox; ay += oy
@@ -218,10 +418,12 @@ class BattleDrawMixin:
 
         zoom = eff_zoom
 
-        # 스프라이트/배경/바닥 캐시 갱신 (줌이 의미 있게 바뀔 때만)
+        # 스프라이트/배경/바닥 캐시 갱신 (줌이 바뀌거나, 스프라이트가 교체됐을 때)
         zq = round(zoom, 2)
-        if self._cache_zoom != zq:
-            # 배경 캐시
+        sprite_sig = tuple(getattr(c, "_sprite_ver", 0) for c in (self.enemies + self.allies))
+        if self._cache_zoom != zq or getattr(self, "_cache_sprite_sig", None) != sprite_sig:
+            self._cache_sprite_sig = sprite_sig
+            # 배경 캐시 (줌 바뀔 때만 실제로 다시 만들면 되지만 단순화)
             if self.background:
                 bw, bh = self.background.get_size()
                 self._bg_cache = pygame.transform.smoothscale(
@@ -240,9 +442,6 @@ class BattleDrawMixin:
                 if e.sprite_orig and e.sprite:
                     target_w = int(e.sprite.get_width() * zoom)
                     target_h = int(e.sprite.get_height() * zoom)
-                    if i != 0:
-                        target_w = target_w // 2
-                        target_h = target_h // 2
                     self._enemy_cache.append(
                         pygame.transform.smoothscale(e.sprite_orig, (max(1, target_w), max(1, target_h)))
                     )
@@ -289,16 +488,17 @@ class BattleDrawMixin:
         for i, (e, (ex, ey)) in reversed(list(enumerate(zip(self.enemies, enemy_pos)))):
             if e.hp <= 0:
                 continue
-            # 모션 중인 적 위치 보정
+            # 모션 중인 적 위치 보정 + 피격 밀림
             ox, oy = self._anim_actor_offset(e)
-            ex += ox; ey += oy
+            ex += ox + getattr(e, "hit_push", 0); ey += oy
             sx = to_sx(ex)
             sy = to_sy(ey)
             spr = self._enemy_cache[i] if i < len(self._enemy_cache) else None
             spr_rect = None
             if spr:
-                spr_rect = spr.get_rect(midbottom=(sx, sy))
+                spr_rect = spr.get_rect(midbottom=(sx, sy + self._opaque_bottom_gap(spr)))
                 surf.blit(spr, spr_rect)
+                self._draw_hit_flash(e, spr, spr_rect)
             else:
                 size = int(80 * zoom)
                 pygame.draw.rect(surf, GRAY, pygame.Rect(sx - size // 2, sy - size, size, size))
@@ -337,15 +537,16 @@ class BattleDrawMixin:
         for j, (a, (ax, ay)) in reversed(list(enumerate(zip(self.allies, ally_pos)))):
             if a.hp <= 0:
                 continue
-            # 모션 중인 actor 위치 보정
+            # 모션 중인 actor 위치 보정 + 피격 밀림
             ox, oy = self._anim_actor_offset(a)
-            ax += ox; ay += oy
+            ax += ox + getattr(a, "hit_push", 0); ay += oy
             sx = to_sx(ax)
             sy = to_sy(ay)
             spr = self._ally_cache[j] if j < len(self._ally_cache) else None
             if spr:
-                r = spr.get_rect(midbottom=(sx, sy))
+                r = spr.get_rect(midbottom=(sx, sy + self._opaque_bottom_gap(spr)))
                 surf.blit(spr, r)
+                self._draw_hit_flash(a, spr, r)
                 bar_top = r.top - int(H * 0.01 * zoom)
             else:
                 size = int(60 * zoom)
@@ -422,7 +623,8 @@ class BattleDrawMixin:
                 count = sk.get("count", "")
                 hits  = sk.get("hits", 1)
                 hits_str = f"  {hits}회" if hits > 1 else ""
-                line2 = f"위력 {sk['power']}  |  {sk['type']}  |  {side} {count}{hits_str}"
+                cost_str = f"  |  소모 마력 {sk['cost']}" if sk.get("cost") else ""
+                line2 = f"위력 {sk['power']}  |  {sk['type']}{cost_str}  |  {side} {count}{hits_str}"
                 draw_text_left(surf, line2, self.fonts["small_bold"], GRAY_D, ix, iy + int(H * 0.045))
                 # 설명 (최대 2줄)
                 dy = iy + int(H * 0.072)
@@ -518,6 +720,14 @@ class BattleDrawMixin:
             esy = to_sy(ty - int(H * 0.15))
             er = ef["img"].get_rect(center=(esx, esy))
             surf.blit(ef["img"], er)
+
+        # ── 새 시전 모션 연출 오버레이 (smite 암전·빛기둥 / charge 오라) ──
+        if self.state == self.STATE_ANIM and self.anim:
+            atype = self.anim.get("type")
+            if atype == "smite":
+                self._draw_smite_overlay(surf, to_sx, to_sy)
+            elif atype == "charge":
+                self._draw_charge_overlay(surf, to_sx, to_sy)
 
         # ── 행동 서열 UI / 레터박스 (팝업·Total·룰렛보다 아래 레이어) ─
         # 레터박스: 실행 페이즈 동안 유지 (비율>0이면 그림)
@@ -625,8 +835,9 @@ class BattleDrawMixin:
 
         # 현재 행동자부터 남은 유닛들
         remaining = order[idx:]
-        box_w = int(W * 0.16)
         box_h = int(H * 0.07)
+        prof_extra = box_h - int(H * 0.012)                # 대상 프로필 칸 너비(≈프로필 크기)
+        box_w = int(W * 0.16) + prof_extra + int(H * 0.008) # 대상 프로필 들어갈 만큼 확장
         gap   = int(H * 0.012)
         margin_x = int(W * 0.015)
         margin_y = int(H * 0.015)
@@ -691,8 +902,10 @@ class BattleDrawMixin:
             # 오른쪽에 예정 행동 아이콘 (적=planned_skill, 아군=계획)
             skill = None
             label = None
+            target = None   # 예정 대상 (프로필 표시용)
             if not is_ally:
                 skill = getattr(c, "planned_skill", None)
+                target = getattr(c, "planned_primary", None)
             else:
                 pl = self.logic.planned.get(c)
                 if pl:
@@ -700,9 +913,21 @@ class BattleDrawMixin:
                         label = "수비"
                     elif pl["kind"] == "skill":
                         skill = pl["skill"]
+                        target = pl.get("primary")
+            # 자신에게 쓰는 스킬은 대상이 시전자 자신
+            if skill is not None and skill.get("side") == "자신":
+                target = c
             if skill is not None or label is not None:
                 icon_size = prof_size
-                icon_rect = pygame.Rect(box.right - icon_size - int(H*0.006), by + int(H*0.006), icon_size, icon_size)
+                # 대상 프로필 표시 조건: 대상이 정해져 있으면 표시 (자신 포함)
+                show_target = (skill is not None and target is not None)
+                pad6 = int(H*0.006)
+                if show_target:
+                    # [스킬][대상] 순으로 오른쪽 정렬
+                    tgt_rect = pygame.Rect(box.right - icon_size - pad6, by + pad6, icon_size, icon_size)
+                    icon_rect = pygame.Rect(tgt_rect.left - icon_size - pad6, by + pad6, icon_size, icon_size)
+                else:
+                    icon_rect = pygame.Rect(box.right - icon_size - pad6, by + pad6, icon_size, icon_size)
                 pygame.draw.rect(surf, (30, 30, 30), icon_rect)
                 pygame.draw.rect(surf, WHITE, icon_rect, 1)
                 if skill:
@@ -722,6 +947,20 @@ class BattleDrawMixin:
                         draw_text(surf, skill["name"][:2], self.fonts["small_bold"], WHITE, icon_rect.centerx, icon_rect.centery)
                 elif label:
                     draw_text(surf, label, self.fonts["small_bold"], WHITE, icon_rect.centerx, icon_rect.centery)
+
+                # 대상 프로필 (스킬 아이콘 오른쪽). side='자신'/대상없음/자기자신 이면 생략.
+                if show_target:
+                    pygame.draw.rect(surf, (30, 30, 30), tgt_rect)
+                    tp = getattr(target, "profile", None)
+                    if tp:
+                        tpi = pygame.transform.smoothscale(tp, (icon_size, icon_size))
+                        surf.blit(tpi, tgt_rect)
+                    else:
+                        draw_text(surf, target.name[:2], self.fonts["small_bold"], WHITE,
+                                  tgt_rect.centerx, tgt_rect.centery)
+                    # 대상 테두리: 대상이 아군이면 초록, 적이면 빨강 (시전자 무관)
+                    tcol = (80, 200, 110) if target in self.allies else (220, 80, 80)
+                    pygame.draw.rect(surf, tcol, tgt_rect, 2)
 
         # ── 펼치기/접기 버튼 (첫 박스 오른쪽) ────────────────────
         btn_w = int(W * 0.025)
@@ -769,6 +1008,43 @@ class BattleDrawMixin:
         draw_text_left(surf, name_str, self.fonts["title"], BLACK, info_x + pad, name_y)
         draw_text_left(surf, stat_str, self.fonts["menu"],  BLACK, info_x + pad, stat_y)
 
+        # ── 버프 행 (스탯 줄 'M 92' 오른쪽에 순서대로) ──────────────
+        # 각 버프 위치를 저장 → 마우스 호버 시 툴팁 표시
+        self._inspect_buff_rects = []
+        buffs = getattr(c, "active_buffs", [])
+        if buffs:
+            stat_w = self.fonts["menu"].size(stat_str)[0]
+            bsize = int(H * 0.045)
+            bgap = int(W * 0.006)
+            bx = info_x + pad + stat_w + int(W * 0.02)   # 스탯 줄 오른쪽
+            by = stat_y - bsize // 2                       # 스탯 줄 중앙 높이에 맞춤
+            for b in buffs:
+                brec = pygame.Rect(bx, by, bsize, bsize)
+                icon = None
+                ic = b.get("icon", "")
+                if ic:
+                    ckey = (ic, bsize)
+                    icon = self._buff_icon_cache.get(ckey)
+                    if icon is None and os.path.exists(ic):
+                        try:
+                            img = pygame.image.load(ic).convert_alpha()
+                            icon = pygame.transform.smoothscale(img, (bsize, bsize))
+                            self._buff_icon_cache[ckey] = icon
+                        except Exception:
+                            icon = None
+                if icon:
+                    surf.blit(icon, brec)
+                else:
+                    pygame.draw.rect(surf, (150, 130, 200), brec, border_radius=4)
+                pygame.draw.rect(surf, BLACK, brec, 1, border_radius=4)
+                stacks = b.get("stacks", 1)
+                if stacks > 1:
+                    self._blit_scaled_number(str(stacks), brec.right - int(bsize*0.04),
+                                             brec.bottom - int(bsize*0.04), bsize,
+                                             anchor="br", color=(255, 255, 255))
+                self._inspect_buff_rects.append((brec, b))
+                bx += bsize + bgap
+
 
         # 체력바
         tab_total_w  = info_w - pad * 2
@@ -802,7 +1078,7 @@ class BattleDrawMixin:
         draw_text(surf, mp_str, self.fonts["hint"], WHITE,
                   bar_x + bar_w // 2, mp_y + bar_h // 2)
 
-        # 탭 (마력바 아래로)  ※버프 행은 나중에 다시 추가 예정
+        # 탭 (마력바 아래로) — 버프 행은 스탯 줄(M) 오른쪽에 표시함
         tab_y = mp_y + bar_h + int(H * 0.03)
         tab_h = int(H * 0.06)
         for ti, tname in enumerate(self.TAB_NAMES):
@@ -894,7 +1170,8 @@ class BattleDrawMixin:
                         _pw = c.defense_skill_power(skill)
                     else:
                         _pw = skill['power']
-                    elements = f"위력 {_pw}  |  {skill['type']}  |  {target_str}{hits_str}"
+                    cost_str = f"  |  소모 마력 {skill['cost']}" if skill.get("cost") else ""
+                    elements = f"위력 {_pw}  |  {skill['type']}{cost_str}  |  {target_str}{hits_str}"
                     if tags_str:
                         elements += f"  |  {tags_str}"
                     if content_rect.top <= name_y <= content_rect.bottom:
@@ -956,13 +1233,63 @@ class BattleDrawMixin:
                         ty += gap_desc
                     ty += gap_block
                     # 마지막 패시브엔 구분선 없음
-                    if pi < len(c.passives) - 1:
-                        if content_rect.top <= ty <= content_rect.bottom:
-                            pygame.draw.line(surf, GRAY,
-                                (content_rect.left + int(W * 0.01), ty),
-                                (content_rect.right - int(W * 0.01), ty), 1)
-                        ty += gap_block
                 surf.set_clip(old_clip)
             else:
                 draw_text(surf, "준비 중입니다.", self.fonts["menu"], GRAY_D,
                           content_rect.centerx, content_rect.centery)
+
+        # ── 버프 호버 툴팁 (맨 위 레이어) ──────────────────────────
+        self._draw_buff_tooltip()
+
+    def _draw_buff_tooltip(self):
+        """마우스가 정보창 버프 아이콘 위에 있으면 툴팁 표시.
+        양식: 버프 이름 / 중첩 수 | 지속 턴 / 버프 설명 (가로 넓은 직사각형)."""
+        rects = getattr(self, "_inspect_buff_rects", None)
+        if not rects:
+            return
+        import pygame
+        mx, my = pygame.mouse.get_pos()
+        hovered = None
+        for brec, b in rects:
+            if brec.collidepoint(mx, my):
+                hovered = b
+                break
+        if not hovered:
+            return
+        from data import buff_data
+        surf = self.screen
+        W, H = self.W, self.H
+        name = hovered.get("name", "")
+        stacks = hovered.get("stacks", 1)
+        dur = hovered.get("duration", 0)
+        desc = buff_data.buff_desc(name)
+
+        # 툴팁 크기 (가로 넓은 직사각형)
+        tip_w = int(W * 0.34)
+        line_h = int(H * 0.032)
+        pad = int(H * 0.018)
+        n_lines = 2 + len(desc)
+        tip_h = pad * 2 + n_lines * line_h
+        tx = mx + int(W * 0.01)
+        ty = my + int(H * 0.01)
+        if tx + tip_w > W:
+            tx = W - tip_w - int(W * 0.01)
+        if ty + tip_h > H:
+            ty = my - tip_h - int(H * 0.01)
+        tip = pygame.Rect(tx, ty, tip_w, tip_h)
+
+        bg = pygame.Surface((tip_w, tip_h), pygame.SRCALPHA)
+        bg.fill((20, 20, 28, 240))
+        surf.blit(bg, tip)
+        pygame.draw.rect(surf, (210, 210, 220), tip, 2, border_radius=6)
+
+        lx = tip.left + int(W * 0.012)
+        cy = tip.top + pad + line_h // 2
+        draw_text_left(surf, name, self.fonts["hint_bold"], (255, 255, 255), lx, cy)
+        cy += line_h
+        info = f"중첩 {stacks}  |  지속 {dur}턴"
+        draw_text_left(surf, info, self.fonts["small_bold"], (200, 200, 210), lx, cy)
+        cy += line_h
+        for line in desc:
+            draw_text_left(surf, line, self.fonts["small"], (220, 220, 225), lx, cy)
+            cy += line_h

@@ -50,7 +50,7 @@ class RegionSelectScreen:
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for i, reg in enumerate(self.regions):
                 if self._card_rect(i).collidepoint(event.pos):
-                    return ("region", reg)
+                    play_click(); return ("region", reg)
         return None
 
     def update(self, dt):

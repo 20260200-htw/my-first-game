@@ -1,39 +1,35 @@
 {
   "unlocked": {
     "acts": [
-      "0막",
-      "1막"
+      "0막"
     ],
     "chapters": {
       "0막": [
         "0장"
-      ],
-      "1막": [
-        "1장"
       ]
     },
     "stages": {
       "0막/0장": [
         "0-1"
-      ],
-      "1막/1장": [
-        "1-1",
-        "1-2"
       ]
     }
   },
   "growth": {
     "주인공": {
-      "level": 1,
+      "level": 10,
       "exp": 0,
-      "phys_level": 1,
-      "magic_level": 1,
+      "phys_level": 10,
+      "magic_level": 10,
       "hp_bonus": 0,
       "spd_bonus": 0,
       "deal_bonus": 0,
       "take_bonus": 0,
       "basic_point": 0,
-      "extra_point": 0
+      "extra_point": 10
     }
+  },
+  "skills": {
+    "owned": [],
+    "equipped": []
   }
 }

@@ -28,6 +28,7 @@ import save_data
 # ── 로그라이크 ────────────────────────────────────────────────────
 from run_state import RUN
 from data import run_data
+from data import encounter_data
 import roguelike_flow as rl
 from screens.region_select_screen import RegionSelectScreen
 from screens.map_screen import MapScreen
@@ -35,6 +36,8 @@ from screens.reward_screen import RewardScreen
 from screens.shop_screen import ShopScreen
 from screens.event_screen import EventScreen
 from screens.run_result_screen import RunResultScreen
+from screens.skill_config_screen import SkillConfigScreen
+from screens.item_view_screen import ItemViewScreen
 
 
 def load_fonts(H):
@@ -103,6 +106,8 @@ def main():
     story_sc     = None
     act_menu_sc  = None   # 막 내부 메뉴
     growth_sc    = None   # 성장 화면
+    skill_sc     = None   # 스킬 배치 화면 (성장)
+    item_sc      = None   # 아이템 화면 (성장)
     loading_sc   = None
     dialogue_sc  = None
     story_ctx    = None   # 진행 중 스테이지 정보 {act,chap,stage}
@@ -120,8 +125,13 @@ def main():
     event_sc    = None
     result_sc   = None
     rl_growth_sc = None       # 정비(성장) 화면
+    rl_skill_sc  = None       # 스킬 배치 화면
+    rl_item_sc   = None       # 아이템 화면 (정비)
+    rl_dialogue_sc = None     # 로그라이크 지점 다이얼로그
+    rl_after_dialogue = None  # 다이얼로그 종료 후 동작: ("battle", enemies)/("boss", enemies)/("maw", enemies)/("event", 사건def)/"node"
     rl_after_battle = None    # 전투 후 처리: "reward_skill"/"reward_item"/"boss"/"maw"/None
     rl_boss_drop = None       # 보스 전리품 아이템 키
+    rl_event_battle = None    # 사건에서 파생된 전투 spec ({"enemies","drop","reward","gold"})
     reset_dlg    = None   # 데이터 초기화 확인 다이얼로그
 
     comp_stack   = []
@@ -149,6 +159,9 @@ def main():
 
     while True:
         dt = clock.tick(FRAMERATES[settings["fps_index"]])
+
+        # 화면에 맞는 배경음악 자동 전환 (매핑에 없는 화면은 현재 BGM 유지)
+        utils.update_bgm(current)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -241,10 +254,11 @@ def main():
                     gallery_sc = GalleryScreen(screen, W, H, fonts)
                     current = "gallery"
                 elif a == "start":
-                    # 로그라이크 회차 시작 (주인공 1명으로 시작 → 지역 선택)
+                    # 로그라이크 회차 시작 → 1구간은 중앙 고정
                     RUN.start_new_run()
-                    region_sc = RegionSelectScreen(screen, W, H, fonts)
-                    current = "region_select"
+                    RUN.enter_region(run_data.FIRST_REGION)
+                    map_sc = MapScreen(screen, W, H, fonts)
+                    current = "map"
                 elif a == "reset":
                     reset_dlg = ResetConfirmDialog(screen, W, H, fonts)
                     overlay = "reset"
@@ -306,8 +320,25 @@ def main():
                         won = rl.battle_won(battle_sc)
                         if not won:
                             # 패배 → 결과(실패)
+                            rl_event_battle = None
                             result_sc = RunResultScreen(screen, W, H, fonts, success=False)
                             current = "run_result"
+                        elif rl_event_battle is not None:
+                            # ── 사건에서 파생된 전투: 승리 처리 ──
+                            spec = rl_event_battle
+                            rl_event_battle = None
+                            RUN.gain_exp(run_data.EXP_REWARD.get(run_data.NODE_BATTLE, 0))
+                            RUN.add_gold(spec.get("gold", run_data.GOLD_REWARD.get(run_data.NODE_BATTLE, 0)))
+                            drop  = spec.get("drop")
+                            rkind = spec.get("reward")      # "skill" / "item" / None
+                            if drop or rkind:
+                                reward_sc = RewardScreen(screen, W, H, fonts,
+                                                         kind=(rkind or "item"),
+                                                         special_item=drop,
+                                                         fixed=(None if rkind else False))
+                                current = "reward"
+                            else:
+                                current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
                         else:
                             node = RUN.current_node()
                             # 경험치/골드 정산
@@ -394,6 +425,22 @@ def main():
                         current = "story"
                     else:
                         current = "act_menu"
+                elif r == "skill_config":
+                    skill_sc = SkillConfigScreen(screen, W, H, fonts)
+                    current = "skill_config"
+                elif r == "item_view":
+                    item_sc = ItemViewScreen(screen, W, H, fonts)
+                    current = "item_view"
+
+            elif current == "skill_config" and skill_sc:
+                r = skill_sc.handle_event(event)
+                if r == "back":
+                    current = "growth"
+
+            elif current == "item_view" and item_sc:
+                r = item_sc.handle_event(event)
+                if r == "back":
+                    current = "growth"
 
             elif current == "story" and story_sc:
                 r = story_sc.handle_event(event)
@@ -454,26 +501,66 @@ def main():
                     current = "rl_growth"
                 elif isinstance(r, tuple) and r[0] == "node":
                     node = r[2]
-                    if node in (run_data.NODE_BATTLE, run_data.NODE_ELITE):
-                        kind = "elite" if node == run_data.NODE_ELITE else "battle"
-                        enemies = run_data.pick_enemy_group(RUN.region, kind)
+                    if node == run_data.NODE_START:
+                        # 시작 지점: 다이얼로그 → 노드 완료
+                        cuts = RUN.current_dialogue()
+                        rl_dialogue_sc = DialogueScreen(screen, W, H, fonts, cuts or [])
+                        rl_after_dialogue = "node"
+                        current = "rl_dialogue"
+                    elif node == run_data.NODE_MID:
+                        # 중간 지점: 다이얼로그 → (중간보스 있으면 전투, 없으면 노드 완료)
+                        cuts = RUN.current_dialogue()
+                        rl_dialogue_sc = DialogueScreen(screen, W, H, fonts, cuts or [])
+                        mb = RUN.current_mid_boss()
+                        if mb:
+                            rl_after_dialogue = ("battle", mb["enemies"])
+                        else:
+                            rl_after_dialogue = "node"
+                        current = "rl_dialogue"
+                    elif node in (run_data.NODE_BATTLE, run_data.NODE_ELITE):
+                        # 구역×회차 출현 풀에서 랜덤 조합으로 적 편성을 만든다
+                        if node == run_data.NODE_ELITE:
+                            enemies = encounter_data.elite_group(RUN.region, RUN.cur_visit)
+                        else:
+                            enemies = encounter_data.battle_group(RUN.region, RUN.cur_visit)
                         battle_sc = rl.make_battle(screen, W, H, fonts, enemies)
                         current = "battle"
                     elif node == run_data.NODE_BOSS:
-                        boss = run_data.region_boss(RUN.region)
-                        rl_boss_drop = run_data.BOSS_DROP.get(boss["name"])
-                        battle_sc = rl.make_battle(screen, W, H, fonts, boss["enemies"])
-                        current = "battle"
+                        # 보스 지점: 다이얼로그 → 전투
+                        # (마왕성은 갈래(열)별 사천왕, 그 외에는 구역×회차 보스)
+                        if RUN.region == "마왕성":
+                            boss = encounter_data.maw_boss(RUN.cur_col)
+                        else:
+                            boss = encounter_data.boss(RUN.region, RUN.cur_visit)
+                        rl_boss_drop = boss.get("drop")
+                        cuts = RUN.current_dialogue()
+                        rl_dialogue_sc = DialogueScreen(screen, W, H, fonts, cuts or [])
+                        rl_after_dialogue = ("boss", boss["enemies"])
+                        current = "rl_dialogue"
                     elif node == run_data.NODE_MAW:
-                        battle_sc = rl.make_battle(screen, W, H, fonts, run_data.MAW_FINAL["enemies"])
-                        current = "battle"
+                        cuts = RUN.current_dialogue()
+                        rl_dialogue_sc = DialogueScreen(screen, W, H, fonts, cuts or [])
+                        rl_after_dialogue = ("maw", encounter_data.maw_final()["enemies"])
+                        current = "rl_dialogue"
                     elif node == run_data.NODE_EVENT:
-                        event_sc = EventScreen(screen, W, H, fonts)
+                        # 구역×회차 배치표에서 N번째 사건을 가져온다 (cuts가 있으면 다이얼로그 먼저)
+                        ev = encounter_data.event_def(RUN.region, RUN.cur_visit, RUN.next_seq("event"))
                         RUN.add_gold(run_data.GOLD_REWARD.get(run_data.NODE_EVENT, 0))
-                        current = "event"
+                        cuts = ev.get("cuts") if ev else None
+                        if cuts:
+                            rl_dialogue_sc = DialogueScreen(screen, W, H, fonts, cuts)
+                            rl_after_dialogue = ("event", ev)
+                            current = "rl_dialogue"
+                        else:
+                            event_sc = EventScreen(screen, W, H, fonts, ev)
+                            current = "event"
                     elif node == run_data.NODE_REWARD:
+                        # 구역×회차 배치표에서 N번째 보상을 가져온다
+                        rdef = encounter_data.reward_def(RUN.region, RUN.cur_visit, RUN.next_seq("reward"))
                         RUN.add_gold(run_data.GOLD_REWARD.get(run_data.NODE_REWARD, 0))
-                        reward_sc = RewardScreen(screen, W, H, fonts, kind="item")
+                        reward_sc = RewardScreen(screen, W, H, fonts,
+                                                 kind=rdef.get("kind", "item"),
+                                                 fixed=rdef.get("choices"))
                         current = "reward"
                     elif node == run_data.NODE_SHOP:
                         shop_sc = ShopScreen(screen, W, H, fonts)
@@ -493,11 +580,48 @@ def main():
                 r = event_sc.handle_event(event)
                 if r == "done":
                     current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
+                elif isinstance(r, tuple) and r[0] == "battle":
+                    # 사건에서 파생된 전투 (승리 후 처리는 battle 핸들러의 rl_event_battle 분기)
+                    rl_event_battle = r[1]
+                    battle_sc = rl.make_battle(screen, W, H, fonts, list(rl_event_battle["enemies"]))
+                    current = "battle"
 
             elif current == "rl_growth" and rl_growth_sc:
                 r = rl_growth_sc.handle_event(event)
                 if r == "back":
                     current = "map"
+                elif r == "skill_config":
+                    rl_skill_sc = SkillConfigScreen(screen, W, H, fonts)
+                    current = "rl_skill"
+                elif r == "item_view":
+                    rl_item_sc = ItemViewScreen(screen, W, H, fonts)
+                    current = "rl_item"
+
+            elif current == "rl_skill" and rl_skill_sc:
+                r = rl_skill_sc.handle_event(event)
+                if r == "back":
+                    current = "rl_growth"
+
+            elif current == "rl_item" and rl_item_sc:
+                r = rl_item_sc.handle_event(event)
+                if r == "back":
+                    current = "rl_growth"
+
+            elif current == "rl_dialogue" and rl_dialogue_sc:
+                r = rl_dialogue_sc.handle_event(event)
+                if r == "done":
+                    act = rl_after_dialogue
+                    rl_after_dialogue = None
+                    if isinstance(act, tuple) and act[0] in ("battle", "boss", "maw"):
+                        battle_sc = rl.make_battle(screen, W, H, fonts, list(act[1]))
+                        current = "battle"
+                    elif isinstance(act, tuple) and act[0] == "event":
+                        # 사건 도입 다이얼로그 종료 → 선택지 화면으로
+                        event_sc = EventScreen(screen, W, H, fonts, act[1])
+                        current = "event"
+                    else:
+                        # 대화만 (시작/중간 대화) → 노드 완료 처리
+                        current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
 
             elif current == "run_result" and result_sc:
                 r = result_sc.handle_event(event)
@@ -521,9 +645,14 @@ def main():
         elif current == "shop" and shop_sc:             shop_sc.update(dt)
         elif current == "event" and event_sc:           event_sc.update(dt)
         elif current == "rl_growth" and rl_growth_sc:   rl_growth_sc.update(dt)
+        elif current == "rl_skill" and rl_skill_sc:     rl_skill_sc.update(dt)
+        elif current == "rl_item" and rl_item_sc:       rl_item_sc.update(dt)
+        elif current == "rl_dialogue" and rl_dialogue_sc: rl_dialogue_sc.update(dt)
         elif current == "run_result" and result_sc:     result_sc.update(dt)
         elif current == "act_menu" and act_menu_sc:   act_menu_sc.update(dt)
         elif current == "growth" and growth_sc:           growth_sc.update(dt)
+        elif current == "skill_config" and skill_sc:      skill_sc.update(dt)
+        elif current == "item_view" and item_sc:          item_sc.update(dt)
         elif current == "story" and story_sc:             story_sc.update(dt)
         elif current == "loading":
             if loading_sc.update(dt) == "done":
@@ -566,9 +695,14 @@ def main():
         elif current == "shop" and shop_sc:             shop_sc.draw()
         elif current == "event" and event_sc:           event_sc.draw()
         elif current == "rl_growth" and rl_growth_sc:   rl_growth_sc.draw()
+        elif current == "rl_skill" and rl_skill_sc:     rl_skill_sc.draw()
+        elif current == "rl_item" and rl_item_sc:       rl_item_sc.draw()
+        elif current == "rl_dialogue" and rl_dialogue_sc: rl_dialogue_sc.draw()
         elif current == "run_result" and result_sc:     result_sc.draw()
         elif current == "act_menu" and act_menu_sc:   act_menu_sc.draw()
         elif current == "growth" and growth_sc:           growth_sc.draw()
+        elif current == "skill_config" and skill_sc:      skill_sc.draw()
+        elif current == "item_view" and item_sc:          item_sc.draw()
         elif current == "story" and story_sc:             story_sc.draw()
         elif current == "loading":      loading_sc.draw()
         elif current == "dialogue":     dialogue_sc.draw()

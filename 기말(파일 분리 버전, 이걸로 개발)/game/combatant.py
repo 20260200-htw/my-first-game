@@ -90,10 +90,19 @@ class Combatant:
         self.defending   = False   # 이번 턴 방어 중
         self.dodging     = False   # 이번 턴 회피 중
         self.dodge_power = 0       # 이번 턴 회피 위력 (0이면 회피 안 함)
+        self.guarding    = False   # 이번 턴 방어 중 (조건부 스킬 판정용)
+        # 피격 움찔 (월드 x 오프셋, 시간에 따라 0으로 복귀) + 빨간 깜빡임
+        self.hit_push    = 0.0     # 현재 움찔 거리(px, 월드 기준)
+        self.hit_push_t  = 0.0     # 남은 복귀 시간(초)
+        self.hit_flash_t = 0.0     # 빨간 깜빡임 남은 시간(초)
 
         self._load_sprite(defn["sprite"], max_sprite_w, max_sprite_h)
 
     def _load_sprite(self, path, max_w, max_h):
+        self._sprite_max_w = max_w   # 런타임 교체용 보관
+        self._sprite_max_h = max_h
+        self._sprite_default_path = path
+        self._sprite_cache = {}      # 경로 → scaled surface
         if os.path.exists(path):
             try:
                 img = pygame.image.load(path).convert_alpha()
@@ -113,9 +122,49 @@ class Combatant:
                 self.sprite = pygame.transform.smoothscale(
                     img, (int(iw * scale), int(ih * scale))
                 )
+                self._sprite_cache[path] = (self.sprite, img)   # (스케일본, 원본)
+                self._sprite_ver = 0
             except Exception:
                 self.sprite = None
                 self.sprite_orig = None
+
+    def set_sprite(self, path):
+        """런타임 스프라이트 교체 (모션 중 사용). 캐시 사용. 실패 시 무시."""
+        if not path:
+            return
+        cache = getattr(self, "_sprite_cache", {})
+        cached = cache.get(path)
+        if cached is not None:
+            scaled, orig = cached
+            if self.sprite is not scaled:
+                self.sprite = scaled
+                self.sprite_orig = orig
+                self._sprite_ver = getattr(self, "_sprite_ver", 0) + 1
+            return
+        if not os.path.exists(path):
+            return
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            iw, ih = img.get_size()
+            scale_ratio = self.defn.get("sprite_scale", None)
+            if scale_ratio is not None:
+                from pygame import display
+                info = display.Info()
+                W, H = info.current_w, info.current_h
+                scale = min(int(W*scale_ratio)/iw, int(H*scale_ratio)/ih)
+            else:
+                scale = min(self._sprite_max_w / iw, self._sprite_max_h / ih)
+            surf = pygame.transform.smoothscale(img, (int(iw*scale), int(ih*scale)))
+            cache[path] = (surf, img)        # (스케일본, 원본)
+            self.sprite = surf
+            self.sprite_orig = img           # 캐시(_enemy_cache)가 원본을 쓰므로 함께 교체
+            self._sprite_ver = getattr(self, "_sprite_ver", 0) + 1
+        except Exception:
+            pass
+
+    def reset_sprite(self):
+        """기본 스프라이트로 복귀."""
+        self.set_sprite(getattr(self, "_sprite_default_path", ""))
 
     def _load_profile(self, path):
         import pygame, os
@@ -161,6 +210,11 @@ class Combatant:
         # 바다의 처형자: 대상 체력이 최대의 30% 이하면 그 대상에게 주는 피해 +30%
         if self.has_passive("바다의 처형자"):
             out.append({"kind": "deal_mult", "value": 1.3, "if_target_hp_ratio_below": 0.3})
+        # 미호(현호): 꼬리 수당 가하는 피해 +5%, 받는 피해 -5%
+        if self.has_passive("미호"):
+            tails = self.defn.get("tails", 8)
+            out.append({"kind": "deal_mult", "value": 1 + 0.05 * tails})
+            out.append({"kind": "take_mult", "value": max(0.0, 1 - 0.05 * tails)})
         return out
 
     def _buff_effects(self):
@@ -200,6 +254,11 @@ class Combatant:
                 if target is None or target.hp_max <= 0:
                     continue
                 if (target.hp / target.hp_max) > hp_below:
+                    continue
+            # 자기 체력 비율 조건 (예: 광전사의 인장 - 내 HP 50% 이하)
+            self_below = e.get("if_self_hp_ratio_below")
+            if self_below is not None:
+                if self.hp_max <= 0 or (self.hp / self.hp_max) > self_below:
                     continue
             mult *= e.get("value", 1.0)
         return mult
@@ -254,6 +313,20 @@ class Combatant:
         self.active_buffs.append(b)
         return b
 
+    def add_buff_stacks(self, name, amount, max_stacks=1, duration=999, icon="", data=None):
+        """버프 중첩을 amount 만큼 한 번에 추가 (최대치 제한). 여우불 등."""
+        for b in self.active_buffs:
+            if b["name"] == name:
+                b["stacks"] = min(b["max_stacks"], b["stacks"] + amount)
+                b["duration"] = b["init_duration"]
+                if data:
+                    b["data"].update(data)
+                return b
+        b = {"name": name, "stacks": min(max_stacks, amount), "max_stacks": max_stacks,
+             "duration": duration, "init_duration": duration,
+             "icon": icon, "data": dict(data) if data else {}}
+        self.active_buffs.append(b)
+        return b
     def get_buff(self, name):
         for b in self.active_buffs:
             if b["name"] == name:
@@ -310,16 +383,93 @@ class Combatant:
         if self.has_passive("전황 분석"):
             self.add_buff("전황 분석", max_stacks=99, duration=999,
                           icon="assets/buff_analysis.png")
+        # 여우불(현호): 직전 턴에 '소모한 마력'만큼 '여우불' 중첩 획득.
+        # (중첩 소모 시 마력 회복은 강력기 사용 시점에서 처리)
+        # 최대 중첩 = 꼬리수 × 111.
+        if self.has_passive("여우불"):
+            spent = getattr(self, "mp_spent_this_turn", 0)
+            if spent > 0:
+                tails = self.defn.get("tails", 8)
+                max_stack = tails * 111
+                cur = self.buff_stacks("여우불")
+                gain = min(spent, max_stack - cur)
+                if gain > 0:
+                    self.add_buff_stacks("여우불", gain, max_stacks=max_stack,
+                                         icon="assets/ETs/ETs_foxfire.png")
+        # 턴 시작 시 이번 턴 소모 마력 리셋
+        self.mp_spent_this_turn = 0
+        # 재생의 반지 등: 턴 시작 시 체력 회복 (effect: regen)
+        regen = self._regen_pct_total()
+        if regen > 0 and self.hp > 0:
+            self.hp = min(self.hp_max, self.hp + int(self.hp_max * regen / 100.0))
 
-    def calc_skill_power(self, skill):
-        """스킬 최종 위력 = 기본 위력 + 레벨 보정 + 위력 가감(패시브)"""
+    def _regen_pct_total(self):
+        """턴 시작 회복 % 합 (패시브 effects 중 kind=regen_pct)."""
+        total = 0
+        for e in self._iter_effects():
+            if e.get("kind") == "regen_pct":
+                total += e.get("value", 0)
+        return total
+
+    def calc_skill_power(self, skill, target=None):
+        """스킬 최종 위력 = 기본 위력 + 레벨 보정 + 위력 가감(패시브) + 조건부(cond)"""
         power = skill["power"] + (self.level * self.POWER_PER_LEVEL)
         power += self._power_add_total()
+        # 스킬 자체 조건부 위력 (cond)
+        power = self._apply_skill_conditions(skill, target, power)
+        return power
+
+    def _eval_condition(self, cond_str, target):
+        """조건 문자열 평가. True/False 반환.
+        지원: target_guard / target_not_guard / target_dodge / target_not_dodge
+              self_hp_below:0.5 / target_hp_below:0.5
+              target_level_below (대상 레벨 < 시전자)
+        """
+        if not cond_str:
+            return True
+        key = cond_str
+        arg = None
+        if ":" in cond_str:
+            key, arg = cond_str.split(":", 1)
+            try:
+                arg = float(arg)
+            except ValueError:
+                arg = None
+        t = target
+        if key == "target_guard":
+            return bool(t and getattr(t, "guarding", False))
+        if key == "target_not_guard":
+            return not (t and getattr(t, "guarding", False))
+        if key == "target_dodge":
+            return bool(t and getattr(t, "dodging", False))
+        if key == "target_not_dodge":
+            return not (t and getattr(t, "dodging", False))
+        if key == "self_hp_below":
+            return self.hp_max > 0 and (self.hp / self.hp_max) <= (arg if arg is not None else 0.5)
+        if key == "target_hp_below":
+            return bool(t and t.hp_max > 0 and (t.hp / t.hp_max) <= (arg if arg is not None else 0.5))
+        if key == "target_level_below":
+            return bool(t and getattr(t, "level", 0) < self.level)
+        return True
+
+    def _apply_skill_conditions(self, skill, target, power):
+        """스킬의 cond 리스트를 평가해 위력에 반영.
+        각 항목: {"if": 조건, "power_mult"/"power_add"/"power_set": 값}
+        조건 없으면 무조건 적용. power_set 은 즉시 고정(0 등)."""
+        for c in skill.get("cond", []):
+            if not self._eval_condition(c.get("if"), target):
+                continue
+            if "power_set" in c:
+                power = c["power_set"]
+            if "power_add" in c:
+                power += c["power_add"]
+            if "power_mult" in c:
+                power *= c["power_mult"]
         return power
 
     def calc_damage(self, skill, target=None):
-        """스킬 1히트 피해량 계산 (패시브 주는피해 배율 + 대상 받는피해 배율 반영)"""
-        final_power = self.calc_skill_power(skill)
+        """스킬 1히트 피해량 계산 (패시브 주는피해 배율 + 대상 받는피해 배율 + 조건부)"""
+        final_power = self.calc_skill_power(skill, target)
         if final_power < 0:
             final_power = 0
         if skill["type"] == "물리":
@@ -328,6 +478,8 @@ class Combatant:
             dmg = final_power * (1 + self.magic_level * self.DAMAGE_PER_LEVEL)
         else:
             dmg = final_power
+        # 스킬 자체 피해 배율 (조건 무관, 예: 아이템/스킬 고정 +50%)
+        dmg *= skill.get("damage_mult", 1.0)
         # 주는 피해 배율 (시전자 패시브, 대상 조건부 포함)
         dmg *= self._deal_mult_total(target)
         # 받는 피해 배율 (대상 패시브)

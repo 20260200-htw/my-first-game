@@ -18,9 +18,10 @@ class RunResultScreen:
         self.W, self.H = W, H
         self.fonts = fonts
         self.success = success
-        # 종료 정산 (레벨/경험치/포인트는 이미 save_data 에 영구 저장됨)
+        # 종료 정산: 스킬은 save_data 에 영구 저장됨. 레벨/포인트/아이템은 다음 회차에 초기화.
         g = save_data.get_growth("주인공")
         self.final_level = g.get("level", 1)
+        self.skill_count = len(RUN.skills_owned)
         RUN.end_run()
 
     def _ok_rect(self):
@@ -31,7 +32,7 @@ class RunResultScreen:
     def handle_event(self, event):
         if (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and
                 self._ok_rect().collidepoint(event.pos)):
-            return "title"
+            play_click(); return "title"
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE):
             return "title"
         return None
@@ -51,8 +52,10 @@ class RunResultScreen:
             draw_text(surf, "패배", self.fonts["title"], (220, 80, 80), W//2, int(H*0.30))
             draw_text(surf, "모험이 막을 내렸습니다.", self.fonts["menu"], WHITE, W//2, int(H*0.40))
 
-        draw_text(surf, f"최종 레벨: Lv.{self.final_level}", self.fonts["menu"], WHITE, W//2, int(H*0.52))
-        draw_text(surf, "레벨은 다음 회차에도 유지됩니다.", self.fonts["hint"], GRAY, W//2, int(H*0.58))
+        draw_text(surf, f"최종 레벨: Lv.{self.final_level}  ·  보유 스킬 {self.skill_count}개",
+                  self.fonts["menu"], WHITE, W//2, int(H*0.52))
+        draw_text(surf, "스킬은 다음 회차에도 유지됩니다. (레벨·포인트·아이템은 초기화)",
+                  self.fonts["hint"], GRAY, W//2, int(H*0.58))
 
         ok = self._ok_rect()
         pygame.draw.rect(surf, WHITE, ok, border_radius=8)

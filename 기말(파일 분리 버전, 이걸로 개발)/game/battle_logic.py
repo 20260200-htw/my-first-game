@@ -14,8 +14,6 @@ class BattleLogic:
         self.log        = []
         self.battle_over = False
         self.winner      = None
-        # 적 전멸 시 호출되는 콜백 (웨이브 전환용). True 반환 시 전투 미종료.
-        self.on_enemy_wiped = None
         # 계획 단계
         self.phase      = "plan"   # "plan"(계획) / "exec"(실행)
         self.plan_idx   = 0        # 계획 중인 아군 인덱스 (turn_order 기준)
@@ -93,17 +91,28 @@ class BattleLogic:
             c.defending = False
             c.dodging   = False
             c.dodge_power = 0
+            c.guarding  = False       # 방어 상태: 그 턴만 유지
             c.shield = 0              # 방어 보호막: 그 턴만 유지
             c.assist_shields = []     # 원호 보호막: 그 턴만 유지
             c.tick_buffs()            # 버프 지속시간 감소 (획득 턴은 미포함)
             c.on_turn_start(self)     # 턴 시작 패시브 (전황 분석 등)
 
         # 적 스킬 미리 결정 (행동 서열 표시용)
+        # 마력/중첩(require_buff) 조건을 만족하는 스킬만 후보로,
+        # 발동 조건이 있는 강력기(여우가 춤을 추니...)는 우선 선택.
         for e in self.enemies:
             if e.hp > 0 and e.skills:
-                e.planned_skill = random.choice(e.skills)
+                usable = self._usable_skills(e)
+                if not usable:
+                    e.planned_skill = None
+                    e.planned_primary = None
+                else:
+                    priority = [s for s in usable if s.get("require_buff")]
+                    e.planned_skill = random.choice(priority) if priority else random.choice(usable)
+                    e.planned_primary = self._preview_primary(e, e.planned_skill)
             else:
                 e.planned_skill = None
+                e.planned_primary = None
 
         self.log.append(f"── {self.turn_count}턴 시작 ──")
 
@@ -112,6 +121,26 @@ class BattleLogic:
         self.planned = {}
         self.plan_idx = 0
         self._advance_plan_to_ally()
+
+    def _preview_primary(self, actor, skill):
+        """예고 화살표용 주 대상 1명 선정 (실제 실행과 약간 달라도 무방).
+        side='자신'이면 None (화살표 없음)."""
+        if skill is None:
+            return None
+        side = skill.get("side", "적")
+        if side == "자신":
+            return None
+        if actor in self.enemies:
+            pool = self.allies if side == "적" else self.enemies
+        else:
+            pool = self.enemies if side == "적" else self.allies
+        alive = [c for c in pool if c.hp > 0]
+        if not alive:
+            return None
+        for c in alive:
+            if getattr(c, "ctype", "") == "player":
+                return c
+        return alive[0]
 
     # ── 계획 단계 ─────────────────────────────────────────────
     def _advance_plan_to_ally(self):
@@ -199,15 +228,64 @@ class BattleLogic:
                 self.start_turn()  # 다음 턴 → 다시 계획 단계
 
     # ── 행동: 스킬 사용 ───────────────────────────────────────
+    def consume_skill_cost(self, actor, skill):
+        """스킬 발동 1회당 마력 소모 + 중첩 소모(+마력 회복) 처리.
+        다단히트와 무관하게 '스킬 시작 시 1번만' 호출해야 한다.
+        모션 시작 시 이미 처리했으면(_cost_charged) 건너뛴다."""
+        if skill.pop("_cost_charged", False):
+            return  # 모션 시작 때 이미 소모함
+        # 마력 소모
+        cost = skill.get("cost", 0)
+        if cost:
+            actor.mp = max(0, actor.mp - cost)
+            actor.mp_spent_this_turn = getattr(actor, "mp_spent_this_turn", 0) + cost
+        # 중첩 소모 (require_buff: 발동 조건이자 소모) → 소모한 중첩만큼 마력 회복
+        req = skill.get("require_buff")
+        if req and req.get("consume"):
+            consumed = actor.buff_stacks(req["name"])
+            actor.remove_buff(req["name"])
+            if consumed > 0:
+                actor.mp = min(actor.mp_max, actor.mp + consumed)
+                self.log.append(f"{actor.name} 마력 회복 (+{consumed})")
+
     def use_skill(self, actor, skill, primary_target=None):
+        # 마력/중첩 소모 (이 경로로 들어오는 스킬: 지원/회복/단순 실행)
+        self.consume_skill_cost(actor, skill)
         targets = self.resolve_targets(actor, skill, primary_target)
         if self.is_support(skill):
             self._apply_support(actor, skill, targets)
             results = []
         else:
             results = self._apply_attack(actor, skill, targets)
+            # 최대 체력 비례 고정 피해 (조건부)
+            self._apply_true_damage(actor, skill, targets, results)
         self._check_battle_over()
         return results
+
+    def _apply_true_damage(self, actor, skill, targets, results):
+        """스킬의 true_damage_max_hp_pct: 매 히트 대상 최대체력 N% 고정피해.
+        조건(true_dmg_cond) 충족 시에만. 히트 수만큼 반복."""
+        pct = skill.get("true_damage_max_hp_pct", 0)
+        if not pct:
+            return
+        cond = skill.get("true_dmg_cond")
+        hits = skill.get("hits", 1)
+        # damage_over 조건: 이 스킬로 입힌 피해가 기준 이상일 때만
+        dmg_over = skill.get("true_dmg_if_damage_over")
+        dealt = {t: d for (t, d) in results if isinstance(d, (int, float))}
+        for target in targets:
+            if target.hp <= 0:
+                continue
+            if cond and not actor._eval_condition(cond, target):
+                continue
+            if dmg_over is not None and dealt.get(target, 0) < dmg_over:
+                continue
+            for _ in range(hits):
+                if target.hp <= 0:
+                    break
+                fixed = int(target.hp_max * pct / 100.0)
+                target.hp = max(0, target.hp - fixed)
+                self.log.append(f"{target.name} 추가 고정 피해! (-{fixed})")
 
     def apply_single_hit(self, actor, skill, targets, fraction=1.0):
         """1히트 분량의 피해 적용 (모션 연동용). 반환: [(target, amount), ...]
@@ -226,8 +304,20 @@ class BattleLogic:
             applied = target.take_damage(dmg)
             self.log.append(f"{actor.name} → {target.name}: {skill['name']} ({applied})")
             results.append((target, applied))
+            # 피격 밀림: 데미지가 0이어도 적중하면 뒤로 조금 밀려난다
+            self._apply_hit_push(target)
         self._check_battle_over()
         return results
+
+    def _apply_hit_push(self, target):
+        """피격 시 움찔 효과: 짧게 뒤로 밀렸다가 복귀하며, 그 동안 빨갛게.
+        움찔과 빨강은 같은 타이머(hit_push_t)로 동기화. 아군=좌 / 적=우."""
+        direction = 1 if target in self.enemies else -1
+        push = 18.0 * direction        # 최초 움찔 거리(px)
+        target.hit_push_max = push     # 복귀 계산 기준
+        target.hit_push = push         # 현재 위치(시작=최대)
+        target.hit_push_t = 0.22       # 움찔+빨강 지속(초). 이 값이 0이 되면 제자리+빨강제거
+        target.hit_flash_t = 0.22
 
     def _apply_attack(self, actor, skill, targets):
         hits = skill.get("hits", 1)
@@ -244,6 +334,7 @@ class BattleLogic:
                 dmg = actor.calc_damage(skill, target)
                 applied = target.take_damage(dmg)
                 total += applied
+                self._apply_hit_push(target)
             self.log.append(f"{actor.name} → {target.name}: {skill['name']} ({total})")
             results.append((target, total))
         return results
@@ -267,6 +358,7 @@ class BattleLogic:
         kind = skill.get("def_kind", "guard")
         if kind == "guard":
             actor.defending = True
+            actor.guarding = True
             shield = actor.calc_guard_shield(skill)
             actor.shield += shield
             self.log.append(f"{actor.name} 방어! (보호막 +{shield})")
@@ -288,13 +380,32 @@ class BattleLogic:
         actor.shield += actor.calc_shield()
 
     # ── 적 AI ─────────────────────────────────────────────────
+    def _usable_skills(self, enemy):
+        """마력이 충분하고 발동 조건(require_buff)을 만족하는 스킬만."""
+        usable = []
+        for sk in enemy.skills:
+            cost = sk.get("cost", 0)
+            if cost and enemy.mp < cost:
+                continue
+            req = sk.get("require_buff")
+            if req:
+                need = req.get("stacks", 1)
+                if enemy.buff_stacks(req["name"]) < need:
+                    continue
+            usable.append(sk)
+        return usable
+
     def enemy_action(self, enemy):
         skill = getattr(enemy, "planned_skill", None)
         if skill is None:
-            if not enemy.skills:
+            usable = self._usable_skills(enemy)
+            if not usable:
+                # 쓸 스킬이 없으면(마력 부족 등) 행동 스킵
                 self.advance()
                 return
-            skill = random.choice(enemy.skills)
+            # 발동 조건이 있는 강력기(require_buff)는 우선 사용
+            priority = [s for s in usable if s.get("require_buff")]
+            skill = random.choice(priority) if priority else random.choice(usable)
         self.use_skill(enemy, skill, primary_target=None)
         self.advance()
 
@@ -309,13 +420,15 @@ class BattleLogic:
                 self.winner = "enemy"
                 self.log.append("── 패배... ──")
                 return
-        # 보스 사망 → 즉시 승리 (단, 다음 웨이브가 있으면 보류)
+        # 보스 사망 → 즉시 승리
         bosses = [e for e in self.enemies if e.ctype == "boss"]
-        enemy_wiped = (bosses and all(b.hp <= 0 for b in bosses)) or all(e.hp <= 0 for e in self.enemies)
-        if enemy_wiped:
-            # 웨이브 콜백: True 반환 시 다음 웨이브로 전환되었으므로 종료하지 않음
-            if self.on_enemy_wiped and self.on_enemy_wiped():
-                return
+        if bosses and all(b.hp <= 0 for b in bosses):
+            self.battle_over = True
+            self.winner = "ally"
+            self.log.append("── 승리! ──")
+            return
+        # 적 전멸 → 승리
+        if all(e.hp <= 0 for e in self.enemies):
             self.battle_over = True
             self.winner = "ally"
             self.log.append("── 승리! ──")

@@ -121,9 +121,10 @@ class _CardSelectScreen:
                         if self._is_locked(self.items[idx][0]):
                             self._snap_to(idx)   # 포커스만 이동, 진입 불가
                         elif idx == self.selected:
+                            play_click("confirm")
                             return self._on_select(self.items[idx][0])
                         else:
-                            self._snap_to(idx)
+                            play_click(); self._snap_to(idx)
                 else:
                     nearest = int(round(self._scroll_x / self._stride()))
                     self._snap_to(nearest)
@@ -271,6 +272,7 @@ class ActMenuScreen:
             for i, r in enumerate(self.rects):
                 if r.collidepoint(event.pos):
                     self.selected = i
+                    play_click()
                     return self._action()
         return None
 

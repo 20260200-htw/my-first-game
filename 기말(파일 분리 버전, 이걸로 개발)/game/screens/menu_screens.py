@@ -36,10 +36,11 @@ class TitleScreen:
                     self.selected = i
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.battle_btn.collidepoint(event.pos):
-                return "battle_test"
+                play_click(); return "battle_test"
             for i, r in enumerate(self.rects):
                 if r.collidepoint(event.pos):
                     self.selected = i
+                    play_click()
                     return self._action()
         return None
 
@@ -110,6 +111,7 @@ class GameStartScreen:
             for i, r in enumerate(self.rects):
                 if r.collidepoint(event.pos):
                     self.selected = i
+                    play_click()
                     return self._action()
         return None
 
@@ -194,7 +196,7 @@ class SettingsScreen:
                 if abs(my - self._cy(i)) < 24:
                     self.selected = i
                     if i == last:
-                        return "back"
+                        play_click("cancel"); return "back"
                     if i in (0, 1):
                         sx  = self.W // 2 + int(self.W * self.LABEL_GAP_RATIO)
                         sw  = int(self.W * 0.15)
@@ -332,6 +334,7 @@ class GalleryScreen:
             for i in range(len(self.ITEMS)):
                 if abs(my - self._cy(i)) < 24:
                     self.selected = i
+                    play_click()
                     return self._action()
         return None
 
@@ -416,7 +419,7 @@ class CompendiumMenuScreen:
                     self.selected = idx
                     _, val = self.items[idx]
                     if val is not None:
-                        return ("select", val)
+                        play_click(); return ("select", val)
         return None
 
     def _visible_count(self):
@@ -683,7 +686,7 @@ class QuitDialog:
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for i, r in enumerate(self._btn_rects()):
                 if r.collidepoint(event.pos):
-                    return "yes" if i == 0 else "no"
+                    play_click("confirm" if i == 0 else "cancel"); return "yes" if i == 0 else "no"
         return None
 
     def update(self, dt): pass
@@ -767,7 +770,7 @@ class ResetConfirmDialog:
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for i, r in enumerate(self._btn_rects()):
                 if r.collidepoint(event.pos):
-                    return self._confirm(i == 0)
+                    play_click("confirm" if i == 0 else "cancel"); return self._confirm(i == 0)
         return None
 
     def _confirm(self, yes):
@@ -908,9 +911,9 @@ class BattleSelectScreen:
                     idx = self._idx_at(*event.pos)
                     if idx is not None:
                         if idx == self.selected:
-                            return ("start", self.presets[self.selected][1])
+                            play_click("confirm"); return ("start", self.presets[self.selected][1])
                         else:
-                            self._snap_to(idx)
+                            play_click(); self._snap_to(idx)
                 else:
                     # 드래그 끝: 가장 가까운 카드로 스냅
                     raw_idx = self._scroll_x / self._stride()
