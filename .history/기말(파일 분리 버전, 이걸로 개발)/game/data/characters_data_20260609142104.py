@@ -118,14 +118,14 @@ ENEMY_DEFS = {
                 "name": "전황 분석",
                 "desc": [
                     "매 턴이 시작될 때마다 '전황 분석' 중첩을 1 얻습니다.",
-                    "중첩당 자신이 가하는 모든 피해가 5% 증가합니다.",
+                    "중첩 당 자신이 가하는 모든 피해가 5% 증가합니다.",
                 ]
             },
             {
                 "name": "가르침을 받은 몸",
                 "desc": [
                     "???가 전투에 참전하면 '학습된 공포' 중첩을 1 얻습니다.",
-                    "이후 매 턴이 시작될 때마다 중첩을 1 얻으며, 중첩당 모든 스킬의 최종 위력이 50 감소합니다.",
+                    "이후 매턴이 시작될 때마다 중첩을 1 얻으며, 중첩 당 모든 스킬의 최종 위력이 50 감소합니다.",
                 ]
             },
         ],
@@ -235,203 +235,6 @@ ENEMY_DEFS = {
         "skills": [
             {"name": "찌르기", "power": 20, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
              "sprite": "", "desc": ["창으로 찌른다."]},
-        ],
-    },
-    "slime": {
-        "title":         "",
-        "name":          "슬라임",
-        "type":          "normal",
-        "level_min":     3,
-        "level_max":     6,
-        "hp_min":        20,
-        "hp_max_range":  30,
-        "mp_max":        10,
-        "phys_min":      1,
-        "phys_max":      4,
-        "magic_min":     1,
-        "magic_max":     1,
-        "sprite":        "assets/center_normal/slime.png",
-        "profile":       "assets/center_normal/slime_profile.png",
-        "sprite_scale":  0.25,
-        "click_w_ratio": 0.5,
-        "background":    "assets/center_normal/center_normal_BG.png",
-        "speed_min": 1, "speed_max": 1,
-        "overview": [
-            "슬라임",
-            "가장 약하고 흔한 몬스터입니다.",
-            "다양한 변종이 존재하지만, 이건 원종입니다.",
-        ],
-        "skills": [
-            {"name": "박치기", "power": 3, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "stationary",
-             "sprite": ""},
-            {"name": "용해", "power": 2, "type": "마법", "side": "적", "count": "단일", "hits": 1,"cost": 10, "tags": [], "motion": "cast",
-             "sprite": ""},
-        ],
-    },
-    "goblin": {
-        "title":         "",
-        "name":          "고블린",
-        "type":          "normal",
-        "level_min":     4,
-        "level_max":     7,
-        "hp_min":        15,
-        "hp_max_range":  40,
-        "mp_max":        10,
-        "phys_min":      2,
-        "phys_max":      5,
-        "magic_min":     1,
-        "magic_max":     1,
-        "sprite":        "assets/center_normal/goblin.png",
-        "profile":       "assets/center_normal/goblin.png",
-        "sprite_scale":  0.25,
-        "click_w_ratio": 0.5,
-        "background":    "assets/center_normal/center_normal_BG.png",
-        "speed_min": 4, "speed_max": 7,
-        "overview": [
-            "고블린",
-            "고블린입니다.",
-            "",
-        ],
-        "skills": [
-            {"name": "후려치기", "power": 1, "type": "물리", "side": "적", "count": "단일", "hits": 2, "tags": [], "motion": "stationary",
-             "sprite": ""},
-        ],
-    },
-    "wild_boar": {
-        "title":         "",
-        "name":          "와일드 보어",
-        "type":          "normal",
-        "level_min":     5,
-        "level_max":     9,
-        "hp_min":        50,
-        "hp_max_range":  100,
-        "mp_max":        10,
-        "phys_min":      6,
-        "phys_max":      11,
-        "magic_min":     1,
-        "magic_max":     1,
-        "sprite":        "assets/center_normal/wild_boar.png",
-        "profile":       "assets/center_normal/wild_boar.png",
-        "sprite_scale":  0.25,
-        "click_w_ratio": 0.5,
-        "background":    "assets/center_normal/center_normal_BG.png",
-        "speed_min": 1, "speed_max": 10,
-        "overview": [
-            "와일드 보어",
-            "초원에 사는 돼지와 닮은 마물입니다.",
-            "비교적 강한 신체 능력을 가지고 있어 주의가 필요합니다.",
-        ],
-        "passives": [
-            {
-                "name": "두꺼운 가죽",
-                "desc": [
-                    "모든 피해로부터 받는 피해가 2% 감소합니다.",
-                ],
-                "effects": [{"kind": "take_mult", "value": 0.98}]
-            }
-        ],
-        "skills": [
-            {"name": "돌진", "power": 5, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
-             "sprite": ""},
-        ],
-    },
-    "dojuk": {
-        "title":         "",
-        "name":          "도적",
-        "type":          "normal",
-        "level":         10,
-        "phys_level":    13,
-        "magic_level":   4,
-        "hp_max":        200,
-        "mp_max":        60,
-        "sprite":        "assets/center_normal/dojuk.png",
-        "profile":       "assets/center_normal/dojuk.png",
-        "sprite_scale":  0.25,
-        "click_w_ratio": 0.5,
-        "background":    "assets/center_normal/center_normal_BG.png",
-        "speed_min": 5, "speed_max": 7,
-        "overview": [
-            "도적",
-            "당신을 습격한 도적입니다.",
-            "그리 강하지는 않으나 기습에 능하니 그 속도를 따라잡을 필요가 있습니다.",
-        ],
-        "passives": [
-            {
-                "name": "약자 사냥",
-                "desc": [
-                    "매 턴이 시작될 때마다 자신보다 속도가 낮은 대상에게 가하는 피해 +5%",
-                ],
-            }
-        ],
-        "skills": [
-            {"name": "찌르기", "power": 3, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "stationary",
-             "sprite": ""},
-            {"name": "기습", "power": 10, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "stationary",
-             "sprite": "", "desc": ["대상보다 속도가 느리다면 최종 위력이 0이 됩니다."]},
-        ],
-    },
-    "small_sky": {
-        "title":         "",
-        "name":          "소천",
-        "type":          "boss",
-        "level":         20,
-        "phys_level":    11,
-        "magic_level":   17,
-        "hp_max":        500,
-        "mp_max":        300,
-        "sprite":        "assets/SS/SS_battle.png",
-        "profile":       "assets/SS/SS_profile.png",
-        "sprite_scale":  0.25,
-        "click_w_ratio": 0.2,
-        "background":    "assets/center_normal/center_normal_BG.png",
-        "speed_min": 5, "speed_max": 7,
-        "overview": [
-            "소천",
-            "모험가 결투에 참여한 신입 모험가입니다.",
-            "동부의 이름난 문파의 문하생이기도 합니다.",
-        ],
-        "passives": [
-            {
-                "name": "약자 사냥",
-                "desc": [
-                    "매 턴이 시작될 때마다 자신보다 속도가 낮은 대상에게 가하는 피해 +5%",
-                ],
-            }
-        ],
-        "skills": [
-            {"name": "무형참", "power": 7, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "cast",
-             "sprite": ""},
-            {"name": "무형참 - 연", "power": 5, "type": "마법", "side": "적", "count": "단일", "hits": 2, "tags": [], "motion": "stationary", "split": 3,
-             "sprite": "",},
-            {"name": "받아치겠습니다.", "power": 10, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "stationary",
-             "sprite": "", "desc": ["이번 턴에 대상으로부터 피해를 받지 않았다면 최종 위력이 0이 됩니다."]},
-            {"name": "무형참류 오의 - 무형만참", "power": 3, "type": "마법", "side": "적", "count": "단일", "hits": 5, "tags": [], "motion": "stationary", "split": 5,
-             "sprite": "", "desc": ["수비 스킬 '방어' 를 사용한 대상에게는 피해량 -50%"]},
-        ],
-    },
-    "snowdin_wild_boar_king": {
-        "title":         "",
-        "name":          "설산 멧돼지 왕",
-        "type":          "boss",
-        "level":         88,
-        "phys_level":    88,
-        "magic_level":   88,
-        "hp_max":        26789,
-        "mp_max":        5000,
-        "sprite":        "assets/north_normal/snowdin_wild_boar_king.png",
-        "profile":       "assets/north_normal/snowdin_wild_boar_king.png",
-        "sprite_scale":  0.25,
-        "click_w_ratio": 0.5,
-        "background":    "assets/battle_bg_forest.png",
-        "speed_min": 1, "speed_max": 10,
-        "overview": [
-            "빙설 속에 살면서 얼어붙은 동족들이 깨어나기를 기다리고 있는 「왕」.",
-            "아주 먼 옛날, 황야의 사냥꾼들 사이에서는 발길이 끊긴 얼어붙은 대지가 생기를 되찾고, 불청객이 얼음 동굴의 안녕을 방해할 때, 설산 멧돼지 족속을 위대",
-            "하게 이끌 「왕」이 잠에서 깨어나 쌓인 눈을 털어내고 예의를 모르는 손님에게 대가를 치르게 할 거라는 전설이 전해 내려온다",
-        ],
-        "skills": [
-            {"name": "돌진", "power": 999, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
-             "sprite": ""},
         ],
     },
     "Eat_slime1": {
@@ -581,7 +384,7 @@ ENEMY_DEFS = {
                 "name": "남부의 신호",
                 "desc": [
                     "아군에게 지원 스킬을 사용하면 해당 아군에게 '선원' 중첩을 1 부여합니다.",
-                    "'선원': 중첩당 최종 위력이 1 증가합니다. 최대 10회 중첩 가능합니다.",
+                    "'선원': 중첩 당 최종 위력이 1 증가합니다. 최대 10회 중첩 가능합니다.",
                 ]
             },
         ],
@@ -755,49 +558,6 @@ ENEMY_DEFS = {
              "sound": "assets/gun_shot.mp3", "desc": ["총을 쏜다. 비겁하다."]},
         ]
     },
-    "Eight_tails": {
-        "name":          "팔미호",
-        "type":          "boss",
-        "level":         88,
-        "phys_level":    84,
-        "magic_level":   92,
-        "hp_max":        8890,
-        "mp_max":        3000,
-        "sprite":        "assets/ETs/ETs_battle",
-        "profile":       "assets/ETs/ETs_profile",
-        "sprite_scale":  0.55,
-        "click_w_ratio": 0.2,
-        "overview": [
-            "설명설명",
-            "",
-            "설명설명",
-            "설명설명",
-        ],
-        "passives": [
-            {
-                "name": "미호",
-                "desc": [
-                    "가진 꼬리 1개당 가하는 피해량 +5% (가진 꼬리 개수: 8)",
-                    "가진 꼬리 1개당 받는 피해량 -5% (가진 꼬리 개수: 8)",
-                ],
-            },
-            {
-                "name": "여우불",
-                "desc": [
-                    "턴이 종료될 때 자신이 이번 턴에 스킬로 소모한 마력 만큼 '여우불' 중첩을 얻습니다.",
-                    "턴이 종료될 때 자신이 이번 턴에 소모한 '여우불' 중첩 만큼 마력을 회복합니다.",
-                    "여우불은 최대 (가진 꼬리의 개수 x 111) 까지 중첩되며, 최대 중첩을 달성한 다음 턴에 강력한 스킬을 사용합니다."
-                ],
-            },
-        ],
-        "speed_min": 10, "speed_max": 10,
-        "skills": [
-            {"name": "보조 사격", "power": 15, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [],
-             "sprite": "", "motion": "cast",
-             "effect_self": "assets/SSG/SSG_nanmu_self.png", "effect_target": "assets/gun_shot_target.png",
-             "sound": "assets/gun_shot.mp3", "desc": ["총을 쏜다. 비겁하다."]},
-        ]
-    },
     "template": {
         "title":         "",
         "name":          "템플릿",
@@ -818,129 +578,6 @@ ENEMY_DEFS = {
         "sprite_scale":  0.5,
         "click_w_ratio": 0.2,
     },
-
-    # ─────────────────────────────────────────────────────────────
-    #   현호 — 동부 2회차 중간보스 (마족 / 미호, 팔미호)
-    # ─────────────────────────────────────────────────────────────
-    "현호": {
-        "name": "현호",
-        "type": "boss",
-        "level": 88,
-        "phys_level": 83,
-        "magic_level": 92,
-        "hp_max": 8890,
-        "mp_max": 999,
-        "speed": 10,
-        "tails": 8,   # 미호 꼬리 수 (패시브/중첩 계산용)
-        "sprite":  "assets/ETs/ETs_battle.png",     # 전투 기본 스프라이트
-        "profile": "assets/ETs/ETs_profile.png", 
-        "background":    "assets/ETs/ETs_battle_BG.png",
-        "bgm":           "assets/ETs/ETs_battle_bgm.mp3",   # 전투 프로필
-        "sprite_scale": 0.30,
-        "click_w_ratio": 0.22,
-        "defense_skills": ["회피"],
-        "overview": [
-            "현호",
-            "",
-            "꼬마 여우의 상위 개체 중 가장 강한 존재. 미호 종족의 팔미호.",
-            "인간과 흡사한 모습을 하고 있다.",
-            "",
-            "미호 종족은 수십 년 전 '인간을 잡아먹으면 꼬리가 늘어난다'는",
-            "이야기가 거짓임을 이미 깨달았기에, 현호 또한 인간을 잡아먹지 않는다.",
-            "",
-            "다만, 1회차에서 당한 수모만큼은 갚으러 왔다.",
-        ],
-        "passives": [
-            {
-                "name": "미호",
-                "desc": [
-                    "꼬리 수만큼 가하는 피해가 증가하고 받는 피해가 감소합니다. (꼬리당 ±5%)",
-                    "현호는 꼬리가 8개입니다. (가하는 피해 +40% / 받는 피해 -40%)",
-                ],
-            },
-            {
-                "name": "죽이진 않을 거예요",
-                "desc": ["가하는 모든 피해가 90% 감소합니다."],
-                "effects": [{"kind": "deal_mult", "value": 0.1}],
-            },
-            {
-                "name": "여우불",
-                "desc": [
-                    "턴이 종료될 때, 이번 턴에 소모한 마력만큼 '여우불' 중첩을 얻습니다.",
-                    "강력한 스킬을 사용해 '여우불' 중첩을 소모하면 소모한 중첩만큼 마력을 회복합니다.",
-                    "최대 중첩은 꼬리 수 × 111 (888) 이며, 중첩이 최대일 때 강력한 스킬을 사용합니다.",
-                ],
-            },
-            {
-                "name": "지어낸 이야기",
-                "desc": [
-                    "미호가 인간을 잡아먹는다는 것은 인간이 지어낸 거짓 이야기입니다.",
-                    "현호와의 전투에서 패배하더라도 잡아먹히지 않습니다.",
-                ],
-            },
-        ],
-        "skills": [
-            {
-                "name": "여우불", "type": "마법", "side": "적", "count": "단일",
-                "power": 20, "hits": 3, "cost": 111,
-                "motion": "ETs_skills_1", "sprite": "",
-                "effect_self": "assets/ETs/ETs_profile.png", "effect_target": "assets/ETs/ETs_profile.png",   # ← 이펙트 이미지 경로 (비우면 전용 모션 스프라이트만)
-                "desc": ["여우불을 3회 쏘아 보낸다."],
-            },
-            {
-                "name": "휘몰아치는 불꽃", "type": "마법", "side": "적", "count": "5인",
-                "power": 5, "hits": 5, "cost": 222,
-                "motion": "ETs_skills_2", "sprite": "",
-                "effect_self": "", "effect_target": "",   # ← 이펙트 이미지 경로 (비우면 전용 모션 스프라이트만)
-                "desc": ["적 전체에게 휘몰아치는 불꽃을 5회 퍼붓는다."],
-            },
-            {
-                "name": "피해보세요!", "type": "물리", "side": "적", "count": "단일",
-                "power": 100, "hits": 1, "cost": 111,
-                "motion": "ETs_skills_3", "sprite": "",
-                "effect_self": "", "effect_target": "",   # ← 이펙트 이미지 경로 (비우면 전용 모션 스프라이트만)
-                "damage_mult": 1.5,   # 이 스킬의 피해량 +50%
-                "cond": [
-                    {"if": "target_dodge", "power_set": 0},   # 회피 시 위력 0
-                ],
-                # 대상 레벨이 더 낮고 이 스킬로 100 이상 피해 시 최대 체력 99% 고정 피해
-                "true_damage_max_hp_pct": 99,
-                "true_dmg_cond": "target_level_below",
-                "true_dmg_if_damage_over": 100,
-                "desc": [
-                    "이 스킬의 피해량 +50%.",
-                    "대상이 회피 시 위력이 0이 된다.",
-                    "대상 레벨이 더 낮고 100 이상의 피해를 입히면 최대 체력의 99%를 추가 고정 피해로 입힌다.",
-                ],
-            },
-            {
-                "name": "잠깐 더울 거예요~", "type": "마법", "side": "적", "count": "5인",
-                "power": 1, "hits": 1, "cost": 333,
-                "motion": "ETs_skills_4", "sprite": "",
-                "effect_self": "", "effect_target": "",   # ← 이펙트 이미지 경로 (비우면 전용 모션 스프라이트만)
-                "cond": [
-                    {"if": "target_not_guard", "power_add": 50},  # 방어 안 하면 +50
-                ],
-                "desc": ["대상이 방어하지 않았다면 위력이 50 증가한다."],
-            },
-            {
-                "name": "여우가 춤을 추니...", "type": "마법", "side": "적", "count": "5인",
-                "power": 100, "hits": 5, "cost": 0,
-                "motion": "ETs_skills_5", "sprite": "",
-                "effect_self": "", "effect_target": "",   # ← 이펙트 이미지 경로 (비우면 전용 모션 스프라이트만)
-                "require_buff": {"name": "여우불", "stacks": 888, "consume": True},
-                "cond": [
-                    {"if": "target_guard", "power_set": 0},   # 수비(방어) 시 위력 0
-                ],
-                "true_damage_max_hp_pct": 5,   # 매 히트 최대 체력 5% 고정 피해
-                "desc": [
-                    "'여우불' 중첩이 최대(888)일 때 사용하며, 중첩을 모두 소모한다.",
-                    "대상이 수비하면 위력이 0이 된다.",
-                    "매 공격마다 대상 최대 체력의 5%를 추가 고정 피해로 입힌다.",
-                ],
-            },
-        ],
-    },
 }
 
 ALLY_DEFS = {
@@ -948,10 +585,10 @@ ALLY_DEFS = {
         "name":          "주인공",
         "defense_skills": ["방어", "회피", "원호"],
         "type":          "player",
-        "level":         100,
-        "phys_level":    100,
-        "magic_level":   100,
-        "hp_max":        1000,
+        "level":         1,
+        "phys_level":    1,
+        "magic_level":   1,
+        "hp_max":        100,
         "mp_max":        500,
         "sprite":        "assets/MC/main_character_B_battle.png",
         "profile":       "assets/MC/main_B_profile.png",
@@ -959,7 +596,7 @@ ALLY_DEFS = {
         "click_w_ratio": 0.2,
         "speed":         5,
         "skills": [
-            {"name": "초딩난타", "power": 1000, "type": "물리", "side": "적", "count": "단일", "hits": 999, "tags": [], "motion": "stationary","split": 1,
+            {"name": "휘두르기", "power": 30, "type": "물리", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "behind",
              "sprite": "", "desc": ["기본적인 물리 공격."]},
             {"name": "마력탄", "power": 25, "type": "마법", "side": "적", "count": "단일", "hits": 1, "tags": [], "motion": "cast",
              "sprite": "", "desc": ["기본적인 마법 공격."]},
@@ -1003,20 +640,20 @@ ALLY_DEFS = {
                 "name": "황금 빛으로 빛나는",
                 "desc": [
                     "매 턴이 시작될 때마다 자신의 전체 마력의 5%를 소모합니다.",
-                    "이때 소모한 마력만큼 아군 모두에게 회복 효과를 적용합니다.",
+                    "이때 소모한 마력 만큼 아군 모두에게 회복 효과를 적용합니다.",
                 ]
             },
             {
                 "name": "마력 발산 - 대리인",
                 "desc": [
                     "'마력 발산' 상태가 되면 회복 효과를 가진 모든 스킬의 최종 위력이 20 증가합니다.",
-                    "자신 또는 아군에게 회복 효과를 적용할 때마다 적용된 회복량만큼 보호막을 추가로 부여합니다.",
+                    "자신 또는 아군에게 회복 효과를 적용할 때마다 적용된 회복량 만큼 보호막을 추가로 부여합니다.",
                 ]
             },
             {
                 "name": "성스러운 육체",
                 "desc": [
-                    "자신이 적에게 피해를 받으면 다음 턴이 시작될 때 받은 피해만큼 보호막을 얻습니다.",
+                    "자신이 적에게 피해를 받으면 다음 턴이 시작될 때 받은 피해 만큼 보호막을 얻습니다.",
                     "이 효과로 얻는 보호막은 보호막을 전부 소모하기 전까지 사라지지 않으며, 무한히 중첩됩니다.",
                 ]
             },
@@ -1173,7 +810,7 @@ ALLY_DEFS = {
                 "name": "남부의 신호",
                 "desc": [
                     "아군에게 지원 스킬을 사용하면 해당 아군에게 '선원' 중첩을 1 부여합니다.",
-                    "'선원': 중첩당 최종 위력이 1 증가합니다. 최대 10회 중첩 가능합니다.",
+                    "'선원': 중첩 당 최종 위력이 1 증가합니다. 최대 10회 중첩 가능합니다.",
                 ]
             },
         ],
@@ -1231,7 +868,7 @@ ALLY_DEFS = {
             {
                 "name": "마력 발산 - 지휘관",
                 "desc": [
-                    "자신의 (현재 마력%÷2)% 만큼 자신이 가하는 피해량이 증가합니다.",
+                    "자신의 (현재 마력%÷2)%만큼 자신이 가하는 피해량이 증가합니다.",
                     "",
                     "자신을 제외한 모든 아군에게 다음 효과를 부여합니다.",
                     "모든 공격 스킬의 최종 위력이 10 증가합니다.",
@@ -1273,30 +910,3 @@ ALLY_DEFS = {
         ]
     },
 }
-
-# ══════════════════════════════════════════════════════════════════
-#   스킬 필드 기본값 보강
-#   (새로 추가한 스킬에 일부 필드가 빠져도 KeyError 가 나지 않도록,
-#    모든 적/아군 스킬에 표준 필드를 채워 넣는다.)
-# ══════════════════════════════════════════════════════════════════
-def _normalize_skill_fields(defs):
-    defaults = {
-        "tags": [],
-        "effect_self": "",
-        "effect_target": "",
-        "sound": "",
-        "sprite": "",
-        "motion": "behind",
-        "count": "단일",
-        "hits": 1,
-        "side": "적",
-        "desc": [],
-    }
-    for d in defs.values():
-        for sk in d.get("skills", []):
-            for k, v in defaults.items():
-                if k not in sk:
-                    sk[k] = list(v) if isinstance(v, list) else v
-
-_normalize_skill_fields(ENEMY_DEFS)
-_normalize_skill_fields(ALLY_DEFS)
