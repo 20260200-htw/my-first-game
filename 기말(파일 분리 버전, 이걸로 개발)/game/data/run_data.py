@@ -7,21 +7,111 @@ import random
 # ══════════════════════════════════════════════════════════════════
 #   구간(지역)
 # ══════════════════════════════════════════════════════════════════
-# 5개 지역. 1~5구간에서 직전 지역 제외하고 선택. 6구간은 마왕성 고정.
+# 일반 모드: 5개 지역을 모두 1번씩 방문하는 고정 경로 (순서만 플레이어 선택).
+#   1구간=중앙(고정) → 2구간=동서남북 중 택1 → 3구간=남은 것 중 택1
+#   → 4구간=남은 것 중 택1 → 5구간=마지막 남은 지역(자동) → 그 지역 보스 클리어 시 회차 종료.
+# 같은 회차 안에서 지역 재방문 없음. 마왕성은 일반 모드에 없음(보스 모드로 분리).
 REGIONS = ["중앙", "동부", "서부", "남부", "북부"]
+MIDDLE_REGIONS = ["동부", "서부", "남부", "북부"]   # 중앙 제외, 순서 선택 대상
 
 REGION_INFO = {
-    "중앙": {"title": "중앙 평원", "desc": "왕국 중심부의 너른 평원."},
-    "동부": {"title": "동부 해안", "desc": "거친 파도가 몰아치는 해안 지대."},
-    "서부": {"title": "서부 산악", "desc": "험준한 봉우리가 이어진 산맥."},
-    "남부": {"title": "남부 사막", "desc": "끝없는 모래바람의 사막."},
-    "북부": {"title": "북부 설원", "desc": "혹한이 지배하는 설원."},
+    "중앙": {
+        "title": "중앙 구역",
+        "desc": "왕국이 위치한 비교적 안전한 구역",
+        "image": "assets/regions/center.png"
+    },
+    "동부": {
+        "title": "동부 구역",
+        "desc": "산과 숲으로 이루어진 구역",
+        "image": "assets/regions/east.png"
+    },
+    "서부": {
+        "title": "서부 구역",
+        "desc": "넓은 평야로 이루어진 구역",
+        "image": "assets/regions/west.png"
+    },
+    "남부": {
+        "title": "남부 구역",
+        "desc": "섬으로 이루어진 고위험 구역",
+        "image": "assets/regions/south.png"
+    },
+    "북부": {
+        "title": "북부 구역",
+        "desc": "모든 것이 얼어붙은 고위험 구역",
+        "image": "assets/regions/north.png"
+    },
 }
 
-# 모든 구간: 시작 + 5노드 + 중간 + 5노드 + 보스 (좌우 직진 레인)
-SEGMENT_MID_NODES = 5   # 시작~중간, 중간~보스 사이 각 노드 수
-FINAL_SEGMENT = 6  # 마왕성
-FIRST_REGION = "중앙"   # 첫 구간 고정 지역
+# 구역별 맵 배경 이미지. assets/backgrounds/ 안의 파일명.
+# 파일이 없으면 흰 배경으로 자동 폴백되므로, 원하는 구역만 채워 넣으면 된다.
+REGION_BACKGROUNDS = {
+    "중앙": "center.png",
+    "동부": "east.png",
+    "서부": "west.png",
+    "남부": "south.png",
+    "북부": "north.png",
+}
+
+def region_background_path(region):
+    """구역 배경 이미지의 전체 경로 (없으면 None)."""
+    import os
+    fn = REGION_BACKGROUNDS.get(region)
+    if not fn:
+        return None
+    path = os.path.join("assets", "backgrounds", fn)
+    return path if os.path.exists(path) else None
+
+# 구역별 노드 선택(맵) 화면 OST. assets/bgm/ 안의 파일명.
+# 파일이 없으면 공통 map.wav(SCREEN_BGM["map"])로 자동 폴백된다.
+REGION_BGM = {
+    "중앙": "map_center.mp3",
+    "동부": "map_east.mp3",
+    "서부": "map_west.mp3",
+    "남부": "map_south.mp3",
+    "북부": "map_north.mp3",
+}
+
+def region_bgm_path(region):
+    """구역별 맵 OST의 전체 경로 (없으면 None → 공통 BGM 사용)."""
+    import os
+    fn = REGION_BGM.get(region)
+    if not fn:
+        return None
+    path = os.path.join("assets", "bgm", fn)
+    return path if os.path.exists(path) else None
+
+# 스킬에 sound 가 지정되지 않았거나 파일이 없을 때 대신 재생할 공용 효과음.
+# assets/sfx/ 안의 파일을 두면 적용된다 (없으면 무음 — 에러 없음).
+DEFAULT_SKILL_SOUND = "assets/sfx/hit_default.wav"
+
+# 모든 구간: 시작 + 3노드 + 중간 + 3노드 + 보스 (좌우 직진 레인)
+SEGMENT_MID_NODES = 3      # 시작~중간, 중간~보스 사이 각 노드 수
+FINAL_SEGMENT = 5          # 일반 모드 마지막 구간(5구간 보스 클리어 시 회차 종료)
+FIRST_REGION = "중앙"      # 첫 구간 고정 지역
+
+# ══════════════════════════════════════════════════════════════════
+#   보스 모드 (일반 모드와 별개, 보스전만 진행)
+#   tier: challenge(도전) → extreme(극한) → final(최종)
+#   enemies 가 None 이면 '미구현(없음)' 슬롯.
+# ══════════════════════════════════════════════════════════════════
+CHALLENGE_BOSSES = {
+    "중앙": None,
+    "동부": {"enemies": ["현호"],   "name": "동부의 도전자 · 현호"},
+    "서부": None,
+    "남부": {"enemies": ["마리나"], "name": "남부의 도전자 · 마리나"},
+    "북부": None,
+}
+EXTREME_BOSSES = {
+    "중앙": None,
+    "동부": {"enemies": ["orochi", "orochi_head", "orochi_head"], "name": "야마타노오로치"},
+    "서부": None,
+    "남부": None,
+    "북부": None,
+}
+FINAL_BOSS = {"마왕": None}   # 최종보스(마왕) — 미구현
+
+# 보스 모드 지역 표시 순서
+BOSS_REGION_ORDER = ["중앙", "동부", "서부", "남부", "북부"]
 
 # ══════════════════════════════════════════════════════════════════
 #   노드 타입
@@ -38,8 +128,8 @@ NODE_MID    = "mid"     # 중간 지점 (다이얼로그, 중간보스 가능)
 
 # 일반 노드 비율 (보스 전 마지막은 상점 확정으로 별도 처리)
 NODE_WEIGHTS = [
-    (NODE_BATTLE, 50),
-    (NODE_EVENT,  30),
+    (NODE_BATTLE, 70),
+    (NODE_EVENT,  10),
     (NODE_ELITE,  10),
     (NODE_REWARD, 10),
 ]
@@ -69,7 +159,7 @@ def enemy_formation_for(n):
 # ══════════════════════════════════════════════════════════════════
 #   경험치 / 레벨
 # ══════════════════════════════════════════════════════════════════
-# 노드 종류별 획득 경험치
+# 노드 종류별 획득 경험치 (현재 미사용 — 전투 승리는 LEVEL_REWARD 로 레벨을 직접 올림)
 EXP_REWARD = {
     NODE_BATTLE: 20,
     NODE_ELITE:  50,
@@ -78,6 +168,17 @@ EXP_REWARD = {
     NODE_BOSS:   100,
     NODE_MAW:    300,
 }
+
+# 전투 승리 시 직접 오르는 레벨 수 (경험치 대신)
+LEVEL_REWARD = {
+    NODE_BATTLE: 1,    # 일반 전투 +1
+    NODE_ELITE:  3,    # 엘리트 전투 +2
+    NODE_BOSS:   5,    # 보스 전투 +5
+    NODE_MAW:    5,    # 최종 마왕 (클리어 직전이라 사실상 무의미)
+}
+
+# 주인공 최대 레벨 (이 이상 오르지 않음)
+LEVEL_CAP = 70
 
 # 골드 보상
 GOLD_REWARD = {
@@ -111,8 +212,8 @@ def _skill(name, power, stype, count="단일", hits=1, motion="behind",
 
 # 시작 시 보유 스킬 (물리1 + 마법1)
 STARTER_SKILLS = [
-    _skill("베기",   30, "물리", motion="behind", desc=["기본적인 물리 공격."]),
-    _skill("마탄",   28, "마법", motion="cast",   desc=["기본적인 마법 공격."]),
+    _skill("때리기",   5, "물리", motion="stationary", desc=["기본적인 물리 공격."]),
+    _skill("마탄",   5, "마법", motion="cast",   desc=["기본적인 마법 공격."]),
 ]
 
 # 보상/상점으로 획득 가능한 스킬 풀
@@ -175,16 +276,47 @@ ITEMS = {
     "낡은 검":      {"name": "낡은 검",      "effect": "atk_pct",     "value": 10, "desc": "가하는 피해 +10%"},
     "강철 갑옷":    {"name": "강철 갑옷",    "effect": "def_pct",     "value": 10, "desc": "받는 피해 -10%"},
     "생명의 부적":  {"name": "생명의 부적",  "effect": "hp_flat",     "value": 200, "desc": "최대 체력 +200"},
-    "재생의 반지":  {"name": "재생의 반지",  "effect": "regen_pct",   "value": 5,  "desc": "턴 시작 시 체력 5% 회복"},
     "신속의 장화":  {"name": "신속의 장화",  "effect": "spd_flat",    "value": 5,  "desc": "속도 +5"},
-    "광전사의 인장":{"name": "광전사의 인장","effect": "lowhp_atk",   "value": 30, "desc": "체력 50% 이하일 때 가하는 피해 +30%"},
-    "현자의 돌":    {"name": "현자의 돌",    "effect": "exp_pct",     "value": 25, "desc": "획득 경험치 +25%"},
-    "황금 주머니":  {"name": "황금 주머니",  "effect": "gold_pct",    "value": 30, "desc": "획득 골드 +30%"},
-    "흡혈의 송곳니":{"name": "흡혈의 송곳니","effect": "lifesteal",   "value": 10, "desc": "가한 피해의 10%만큼 회복"},
-    "불사의 깃털":  {"name": "불사의 깃털",  "effect": "revive",      "value": 1,  "desc": "전투당 1회, 치명상 시 체력 1로 생존"},
 }
 
 # 구간 보스의 확정 드랍은 encounter_data 의 boss 정의 안 "drop" 키로 지정한다.
+
+# ══════════════════════════════════════════════════════════════════
+#   아이템 시너지: 세트의 모든 아이템을 '장착'하면 추가 효과가 발동
+#   items: 필요한 아이템 키 목록 (전부 장착 시 완성)
+#   bonus_effects: 추가로 합산되는 효과 [{effect, value}, ...] (ITEMS 와 같은 effect 체계)
+#   desc: 시너지 설명
+# ══════════════════════════════════════════════════════════════════
+SYNERGIES = {
+}
+
+
+def active_synergies(equipped_keys):
+    """장착 아이템으로 완성된 시너지 이름 목록."""
+    eq = set(equipped_keys)
+    out = []
+    for name, syn in SYNERGIES.items():
+        if all(k in eq for k in syn["items"]):
+            out.append(name)
+    return out
+
+
+def _synergy_bonus_effects(equipped_keys):
+    """완성된 시너지들의 추가 효과를 effect→value 합계로."""
+    totals = {}
+    for name in active_synergies(equipped_keys):
+        for be in SYNERGIES[name]["bonus_effects"]:
+            totals[be["effect"]] = totals.get(be["effect"], 0) + be["value"]
+    return totals
+
+
+def item_effect_value(equipped_keys, effect):
+    """장착 아이템 + 완성 시너지의 특정 effect 값 합계."""
+    total = sum(ITEMS[k]["value"] for k in equipped_keys
+                if k in ITEMS and ITEMS[k]["effect"] == effect)
+    total += _synergy_bonus_effects(equipped_keys).get(effect, 0)
+    return total
+
 
 def roll_item_choices(n=3, owned_keys=None):
     """보상용 아이템 후보 n개 추첨 (이미 보유한 것 제외)."""
@@ -224,6 +356,16 @@ def items_to_passives(item_keys):
             regen += val
         elif eff == "revive":
             revive += val
+    # 완성된 시너지의 추가 효과 합산
+    syn = _synergy_bonus_effects(item_keys)
+    atk_pct   += syn.get("atk_pct", 0)
+    def_pct   += syn.get("def_pct", 0)
+    lowhp_atk += syn.get("lowhp_atk", 0)
+    lifesteal += syn.get("lifesteal", 0)
+    regen     += syn.get("regen_pct", 0)
+    revive    += syn.get("revive", 0)
+    for sname in active_synergies(item_keys):
+        descs.append(f"[시너지] {SYNERGIES[sname]['desc']}")
     if atk_pct:
         effects.append({"kind": "deal_mult", "value": 1 + atk_pct / 100.0})
         descs.append(f"가하는 피해 +{atk_pct}%")
@@ -321,3 +463,28 @@ def dialogue_for(region, spot, visit):
 # ══════════════════════════════════════════════════════════════════
 #   중간 지점 중간보스 → encounter_data 의 "mid_boss" 키로 이동
 # ══════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════
+#   보스 모드 헬퍼
+# ══════════════════════════════════════════════════════════════════
+def challenge_boss(region):
+    """도전보스 정의 (없으면 None=미구현)."""
+    return CHALLENGE_BOSSES.get(region)
+
+def extreme_boss(region):
+    """극한보스 정의 (없으면 None=미구현)."""
+    return EXTREME_BOSSES.get(region)
+
+def boss_tier_defs(tier):
+    """tier별 {지역: 보스def or None} 매핑."""
+    if tier == "challenge":
+        return CHALLENGE_BOSSES
+    if tier == "extreme":
+        return EXTREME_BOSSES
+    if tier == "final":
+        return FINAL_BOSS
+    return {}
+
+def implemented_bosses(tier):
+    """해당 tier에서 실제 구현된(=None이 아닌) 지역 목록."""
+    return [r for r, b in boss_tier_defs(tier).items() if b is not None]

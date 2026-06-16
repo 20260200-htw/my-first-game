@@ -18,61 +18,68 @@
 # 전투 기본 스프라이트(복귀용): assets/ETs/ETs_battle.png
 
 _ETs = "assets/ETs/ETs_battle_{}.png"
+_SS = "assets/SS/SS_battle_{}.png"
 
 MOTION_DEFS = {
     # 여우불 — 3회 투사
     "ETs_skills_1": {
-        "base": "smite",
+        "base": "cast",
         "frames": [
-            (_ETs.format("A"), 0.3),
-            (_ETs.format("B"), 0.4),
-            (_ETs.format("C"), 0.4),
-            (_ETs.format("D"), 0.4),
-            (_ETs.format("E"), 0.3),
+            (_ETs.format("F"), 1.0),
         ],
     },
     # 휘몰아치는 불꽃 — 전체 5회
     "ETs_skills_2": {
         "base": "cast",
         "frames": [
-            (_ETs.format("F"), 0.3),
-            (_ETs.format("G"), 0.4),
-            (_ETs.format("H"), 0.5),
-            (_ETs.format("I"), 0.4),
-            (_ETs.format("J"), 0.3),
+            (_ETs.format("D"), 0.3),
         ],
     },
     # 피해보세요! — 단일 강타 (근접)
     "ETs_skills_3": {
-        "base": "behind",
+        "base": "stationary",
         "frames": [
-            (_ETs.format("H"), 0.3),
-            (_ETs.format("I"), 0.3),
-            (_ETs.format("I"), 0.5),
-            (_ETs.format("I"), 0.4),
-            (_ETs.format("I"), 0.3),
+            (_ETs.format("H"), 0.5),
+            (_ETs.format("I"), 1.0),
         ],
     },
     # 잠깐 더울 거예요~ — 전체 1회
     "ETs_skills_4": {
         "base": "cast",
         "frames": [
-            (_ETs.format("A"), 0.3),
-            (_ETs.format("A"), 0.4),
-            (_ETs.format("A"), 0.4),
-            (_ETs.format("A"), 0.4),
-            (_ETs.format("A"), 0.3),
+            (_ETs.format("G"), 1.0),
         ],
     },
     # 여우가 춤을 추니... — 최강기, 전체 5회
     "ETs_skills_5": {
+        "base": "charge",
+        "frames": [
+            (_ETs.format("E"), 0.4),
+        ],
+    },
+    "SS_skills_1": {
         "base": "cast",
         "frames": [
-            (_ETs.format("U"), 0.4),
-            (_ETs.format("V"), 0.5),
-            (_ETs.format("W"), 0.6),
-            (_ETs.format("X"), 0.5),
-            (_ETs.format("Y"), 0.5),
+            (_SS.format("A"), 1.0),
+        ],
+    },
+    "SS_skills_2": {
+        "base": "smite",
+        "frames": [
+            (_SS.format("B"), 1.0),
+        ],
+    },
+    "SS_skills_3": {
+        "base": "behind",
+        "frames": [
+            (_SS.format(""), 0.4),
+            (_SS.format("C"), 1.0),
+        ],
+    },
+    "SS_skills_4": {
+        "base": "charge",
+        "frames": [
+            (_SS.format("B"), 1.0),
         ],
     },
 }

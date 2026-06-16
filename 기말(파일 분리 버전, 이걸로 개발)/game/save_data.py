@@ -70,6 +70,19 @@ def _default_save():
             "owned":    [],   # 보유 스킬 dict 목록 (영구)
             "equipped": [],   # 장착 스킬 이름 목록 (최대 10)
         },
+        # ── 아이템: 영구 보존 (회차를 넘어 유지). 보유와 장착 분리(최대 10 장착) ──
+        "items": {
+            "owned":    [],   # 보유 아이템 키 목록
+            "equipped": [],   # 장착 아이템 키 목록 (최대 10)
+        },
+        # ── 진행도(로그라이트): 보스 클리어 / 게임 완결 ───────────────
+        "progress": {
+            "normal_cleared":    False,   # 일반 모드(5지역) 1회 이상 클리어
+            "challenge_cleared": [],      # 클리어한 도전보스 지역 목록 (예: ["동부","남부"])
+            "extreme_cleared":   [],      # 클리어한 극한보스 지역 목록
+            "final_cleared":     False,   # 최종보스(마왕) 클리어
+            "game_complete":     False,   # 게임 완결 (최종보스 첫 클리어 시 True)
+        },
     }
 
 # ── 전역 상태 ────────────────────────────────────────────────────────
@@ -90,6 +103,17 @@ def load():
             for char, dvals in default_g.items():
                 saved = loaded_g.get(char, {})
                 growth[char] = {k: saved.get(k, v) for k, v in dvals.items()}
+            default_prog = _default_save()["progress"]
+            loaded_prog  = loaded.get("progress", {})
+            progress = {k: loaded_prog.get(k, v) for k, v in default_prog.items()}
+            # 아이템: 구버전(리스트) 또는 신버전({owned,equipped}) 호환
+            raw_items = loaded.get("items", [])
+            if isinstance(raw_items, list):
+                it_owned = list(raw_items)
+                it_equipped = list(raw_items)[:10]   # 구버전은 보유=장착으로 간주
+            else:
+                it_owned = list(raw_items.get("owned", []))
+                it_equipped = list(raw_items.get("equipped", []))
             _data = {
                 "unlocked": {
                     "acts":     loaded.get("unlocked", {}).get("acts",     ["0막"]),
@@ -101,6 +125,8 @@ def load():
                     "owned":    list(loaded.get("skills", {}).get("owned",    [])),
                     "equipped": list(loaded.get("skills", {}).get("equipped", [])),
                 },
+                "items":    {"owned": it_owned, "equipped": it_equipped},
+                "progress": progress,
             }
         except Exception:
             _data = _default_save()
@@ -252,3 +278,72 @@ def set_skills(owned, equipped_names):
         "equipped": [str(n) for n in equipped_names],
     }
     save()
+
+# ── 영구 아이템 접근 (보유/장착 분리) ─────────────────────────────────
+def get_items():
+    """(보유 아이템 키 목록, 장착 아이템 키 목록) 사본 반환."""
+    it = _data.get("items") or {}
+    if isinstance(it, list):   # 구버전 안전망
+        return list(it), list(it)[:10]
+    return list(it.get("owned", [])), list(it.get("equipped", []))
+
+
+def set_items(owned_keys, equipped_keys=None):
+    """보유/장착 아이템을 영구 저장. equipped_keys 미지정 시 기존 장착 유지(가능한 것만)."""
+    owned = list(owned_keys)
+    if equipped_keys is None:
+        _, prev_eq = get_items()
+        equipped = [k for k in prev_eq if k in owned]
+    else:
+        equipped = [k for k in equipped_keys if k in owned][:10]
+    _data["items"] = {"owned": owned, "equipped": equipped}
+    save()
+
+
+# ── 진행도(보스 클리어 / 게임 완결) 접근 ──────────────────────────────
+def get_progress():
+    """진행도 dict 사본 반환 (누락 키는 기본값 보강)."""
+    default = _default_save()["progress"]
+    p = _data.get("progress") or {}
+    return {k: p.get(k, v) for k, v in default.items()}
+
+
+def _progress():
+    if "progress" not in _data or not isinstance(_data.get("progress"), dict):
+        _data["progress"] = dict(_default_save()["progress"])
+    # 누락 키 보강
+    for k, v in _default_save()["progress"].items():
+        _data["progress"].setdefault(k, v)
+    return _data["progress"]
+
+
+def mark_normal_cleared():
+    """일반 모드(5지역) 클리어 기록."""
+    _progress()["normal_cleared"] = True
+    save()
+
+
+def mark_boss_cleared(tier, region):
+    """보스 클리어 기록. tier: 'challenge'/'extreme'/'final'. region: 지역명(최종은 '마왕')."""
+    p = _progress()
+    if tier == "final":
+        first = not p.get("final_cleared", False)
+        p["final_cleared"] = True
+        if not p.get("game_complete", False):
+            p["game_complete"] = True
+        save()
+        return first   # 최초 클리어면 True (엔딩 첫 재생)
+    key = "challenge_cleared" if tier == "challenge" else "extreme_cleared"
+    lst = p.setdefault(key, [])
+    if region not in lst:
+        lst.append(region)
+    save()
+    return False
+
+
+def is_boss_cleared(tier, region):
+    p = get_progress()
+    if tier == "final":
+        return p.get("final_cleared", False)
+    key = "challenge_cleared" if tier == "challenge" else "extreme_cleared"
+    return region in p.get(key, [])

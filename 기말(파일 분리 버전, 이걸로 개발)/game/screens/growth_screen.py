@@ -109,7 +109,7 @@ class GrowthScreen:
     def _rr_btn_x(self):
         """우측 ▲/▼ x좌표."""
         W = self.W
-        return int(W*0.76), int(W*0.86)
+        return int(W*0.76), int(W*0.88)
 
     # ── 이벤트 ────────────────────────────────────────────────────
     def handle_event(self, event):
@@ -229,8 +229,8 @@ class GrowthScreen:
 
         # ══ 우측 ════════════════════════════════════════════════
         lbl_rx = int(W*0.53)
-        val_rx = int(W*0.93)
         up_rx, dn_rx = self._rr_btn_x()
+        val_rx = (up_rx + dn_rx) // 2
 
         # 남은 포인트 (우측)
         rpt_col = (180,40,40) if rp == 0 else (30,130,60)

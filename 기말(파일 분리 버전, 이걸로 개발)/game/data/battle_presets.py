@@ -36,19 +36,18 @@ ENEMY_FORMATIONS = {
     #    2
     "솔캐리_전방":  [(0, 0), (2, 2), (2, 1), (2,  -1), (2,  -2)],
     "보스_마리":  [(2, 0), (0, -2), (0, 2), (3,  -3), (3,  3)],
+    "오로치":  [(4, 0), (0, 0), (2, -4), (2, 4), (-2,  -5), (-2,  5), (8,  -4), (8,  4)],
 }
 
 # 테스트용 캐릭터
-_ENEMIES = ["벨라", "말단병사", "말단병사", "말단병사", "말단병사"]
-_Marie = ["보스 마리", "마리나", "마리 따까리1", "마리 따까리2", "마리 따까리2"]
 _Hyeonho = ["현호"]
-_KL_WWE = ["벨라"]
 _ALLIES_1 = ["주인공"]
-_ALLIES_2 = ["주인공", "금강"]
-_ALLIES_3 = ["주인공", "금강", "아우렐리우스"]
-_ALLIES_4 = ["주인공", "금강", "아우렐리우스", "마리"]
 snowdin = ["snowdin_wild_boar_king"]
 SS = ["small_sky"]
+dosa = ["dosa"]
+kirin = ["kirin"]
+shark = ["shark"]
+orochi = ["orochi", "orochi_head", "orochi_head", "orochi_head", "orochi_head", "orochi_head", "orochi_head", "orochi_head"]
 
 BATTLE_PRESETS = {
     "설산 멧돼지 왕": {
@@ -67,70 +66,28 @@ BATTLE_PRESETS = {
         "ally_formation":  "솔로",
         "gap": 0.3,
     },
-    "솔로_vs_더블캐리": {
-        "title": "[솔로 vs 더블캐리]",
-        "enemies": _ENEMIES,
+    "도사": {
+        "title": "[도사]",
+        "enemies": dosa,
         "allies":  _ALLIES_1,
-        "enemy_formation": "더블캐리",
+        "enemy_formation": "솔캐리_전방",
         "ally_formation":  "솔로",
         "gap": 0.3,
     },
-    "듀오_vs_솔캐리_전방": {
-        "title": "[듀오 vs 솔캐리 전방]",
-        "enemies": _ENEMIES,
-        "allies":  _ALLIES_2,
-        "enemy_formation": "솔캐리_전방",
-        "ally_formation":  "듀오",
-        "gap": 0.3,
-    },
-    "듀오_vs_솔캐리_후방": {
-        "title": "[듀오 vs 솔캐리 후방]",
-        "enemies": _ENEMIES,
-        "allies":  _ALLIES_2,
-        "enemy_formation": "솔캐리_후방",
-        "ally_formation":  "듀오",
-        "gap": 0.3,
-    },
-    "듀오_vs_더블캐리": {
-        "title": "[듀오 vs 더블캐리]",
-        "enemies": _ENEMIES,
-        "allies":  _ALLIES_2,
-        "enemy_formation": "더블캐리",
-        "ally_formation":  "듀오",
-        "gap": 0.3,
-    },
-    " 스쿼드_vs_솔캐리_전방": {
-        "title": "[스쿼드 vs 솔캐리 전방]",
-        "enemies": _ENEMIES,
-        "allies":  _ALLIES_4,
-        "enemy_formation": "솔캐리_전방",
-        "ally_formation":  "스쿼드",
-        "gap": 0.3,
-    },
-    "트리오_vs_솔캐리_후방": {
-        "title": "[트리오 vs 솔캐리 후방]",
-        "enemies": _ENEMIES,
-        "allies":  _ALLIES_3,
-        "enemy_formation": "솔캐리_후방",
-        "ally_formation":  "트리오",
-        "gap": 0.3,
-    },
-    
-    "스쿼드_vs_솔로": {
-        "title": "[스쿼드 vs 솔로]",
-        "enemies": _KL_WWE,
-        "allies":  _ALLIES_4,
+    "기린": {
+        "title": "[기린]",
+        "enemies": kirin,
+        "allies":  _ALLIES_1,
         "enemy_formation": "솔로",
-        "ally_formation":  "스쿼드",
+        "ally_formation":  "솔로",
         "gap": 0.3,
     },
-
-    "트리오_vs_마리": {
-        "title": "[트리오 vs 마리]",
-        "enemies": _Marie,
-        "allies":  _ALLIES_3,
-        "enemy_formation": "보스_마리",
-        "ally_formation":  "트리오",
+    "오로치": {
+        "title": "[오로치]",
+        "enemies": orochi,
+        "allies":  _ALLIES_1,
+        "enemy_formation": "오로치",
+        "ally_formation":  "솔로",
         "gap": 0.3,
     },
     "솔로_vs_현호": {
@@ -139,14 +96,6 @@ BATTLE_PRESETS = {
         "allies":  _ALLIES_1,
         "enemy_formation": "솔로",
         "ally_formation":  "솔로",
-        "gap": 0.3,
-    },
-    "풀파티_vs_현호": {
-        "title": "[풀파티 vs 현호]",
-        "enemies": _Hyeonho,
-        "allies":  _ALLIES_4,
-        "enemy_formation": "솔로",
-        "ally_formation":  "스쿼드",
         "gap": 0.3,
     },
 }

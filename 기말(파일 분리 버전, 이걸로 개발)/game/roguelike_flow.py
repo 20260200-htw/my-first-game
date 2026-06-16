@@ -17,15 +17,14 @@ def _player_def_for_battle():
         d["skills"] = copy.deepcopy(RUN.skills_equipped)
     # 최대 HP (아이템 hp_flat 포함된 RUN.hp_max 사용)
     d["hp_max"] = RUN.hp_max
-    # 아이템 효과 → 패시브로 주입 (가하는/받는 피해, 저체력 보정 등)
-    effects, descs, meta = run_data.items_to_passives(RUN.items)
+    # 아이템 효과 → 패시브로 주입 (장착 아이템 + 완성된 시너지 추가 효과)
+    effects, descs, meta = run_data.items_to_passives(RUN.items_equipped)
     if effects:
         passives = list(d.get("passives", []))
         passives.append({"name": "장비 효과", "desc": descs, "effects": effects})
         d["passives"] = passives
-    # 속도 아이템 (spd_flat) → speed 가산
-    spd_bonus = sum(run_data.ITEMS[k]["value"] for k in RUN.items
-                    if run_data.ITEMS[k]["effect"] == "spd_flat")
+    # 속도 아이템 (spd_flat) → speed 가산 (장착 + 시너지)
+    spd_bonus = run_data.item_effect_value(RUN.items_equipped, "spd_flat")
     if spd_bonus and isinstance(d.get("speed"), (int, float)):
         d["speed"] = d["speed"] + spd_bonus
     return d

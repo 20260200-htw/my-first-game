@@ -6,7 +6,7 @@ from utils import *
 #   타이틀 화면
 # ══════════════════════════════════════════════════════════════════
 class TitleScreen:
-    ITEMS = ["게임 시작", "아카이브", "설정", "데이터 초기화", "게임 종료"]
+    ITEMS = ["게임 시작", "보스 모드", "설정", "데이터 초기화", "게임 종료"]
 
     def __init__(self, screen, W, H, fonts):
         self.screen = screen
@@ -45,7 +45,7 @@ class TitleScreen:
         return None
 
     def _action(self):
-        return ["start", "gallery", "settings", "reset", "quit"][self.selected]
+        return ["start", "boss_mode", "settings", "reset", "quit"][self.selected]
 
     def update(self, dt): pass
 
@@ -67,11 +67,6 @@ class TitleScreen:
                 draw_text(surf, item, self.fonts["menu"], WHITE, W // 2, cy)
             else:
                 draw_text(surf, item, self.fonts["menu"], BLACK, W // 2, cy)
-
-
-        pygame.draw.rect(surf, BLACK, self.battle_btn)
-        draw_text(surf, "전투 테스트", self.fonts["hint"], WHITE,
-                  self.battle_btn.centerx, self.battle_btn.centery)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -236,7 +231,10 @@ class SettingsScreen:
     def draw(self):
         W, H = self.W, self.H
         surf = self.screen
-        surf.fill(WHITE)
+        # 팝업: 전체를 덮지 않고 뒤 화면 위에 반투명 딤 + 패널
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 140))
+        surf.blit(dim, (0, 0))
 
         bx = int(W * 0.2)
         by = int(H * 0.08)
@@ -715,6 +713,144 @@ class QuitDialog:
                 pygame.draw.rect(surf, WHITE, r)
                 pygame.draw.rect(surf, BLACK, r, 1)
                 draw_text(surf, label, self.fonts["menu"], BLACK, r.centerx, r.centery)
+
+
+# ══════════════════════════════════════════════════════════════════
+#   게임 중 일시정지 메뉴 (ESC 팝업)
+# ══════════════════════════════════════════════════════════════════
+class PauseMenu:
+    """게임(회차) 진행 중 ESC 로 띄우는 중앙 팝업 메뉴."""
+    ITEMS = ["설정", "포기하기"]
+
+    def __init__(self, screen, W, H, fonts):
+        self.screen = screen
+        self.W, self.H = W, H
+        self.fonts = fonts
+        self.selected = 0
+
+    def _panel(self):
+        W, H = self.W, self.H
+        dw, dh = int(W * 0.30), int(H * 0.42)
+        return (W - dw) // 2, (H - dh) // 2, dw, dh
+
+    def _btn_rects(self):
+        dx, dy, dw, dh = self._panel()
+        bw = int(dw * 0.72)
+        bh = int(dh * 0.16)
+        bx = self.W // 2 - bw // 2
+        gap = int(dh * 0.06)
+        top = dy + int(dh * 0.26)
+        return [pygame.Rect(bx, top + i * (bh + gap), bw, bh) for i in range(len(self.ITEMS))]
+
+    def _result(self):
+        return ["settings", "giveup"][self.selected]
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_UP, pygame.K_w):
+                self.selected = (self.selected - 1) % len(self.ITEMS)
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                self.selected = (self.selected + 1) % len(self.ITEMS)
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                play_click("confirm"); return self._result()
+            elif event.key == pygame.K_ESCAPE:
+                play_click("cancel"); return "close"   # ESC 다시 누르면 메뉴 닫고 게임 복귀
+        elif event.type == pygame.MOUSEMOTION:
+            for i, r in enumerate(self._btn_rects()):
+                if r.collidepoint(event.pos): self.selected = i
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for i, r in enumerate(self._btn_rects()):
+                if r.collidepoint(event.pos):
+                    self.selected = i; play_click("confirm"); return self._result()
+        return None
+
+    def update(self, dt): pass
+
+    def draw(self):
+        W, H = self.W, self.H
+        surf = self.screen
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 140))
+        surf.blit(dim, (0, 0))
+        dx, dy, dw, dh = self._panel()
+        pygame.draw.rect(surf, WHITE, (dx, dy, dw, dh))
+        pygame.draw.rect(surf, BLACK, (dx, dy, dw, dh), 2)
+        draw_text_fit(surf, "일시정지", self.fonts["menu"], BLACK, W // 2, dy + int(dh * 0.12), dw * 0.8)
+        for i, (r, label) in enumerate(zip(self._btn_rects(), self.ITEMS)):
+            if i == self.selected:
+                pygame.draw.rect(surf, BLACK, r)
+                draw_text_fit(surf, label, self.fonts["menu"], WHITE, r.centerx, r.centery, r.width * 0.86)
+            else:
+                pygame.draw.rect(surf, WHITE, r)
+                pygame.draw.rect(surf, BLACK, r, 1)
+                draw_text_fit(surf, label, self.fonts["menu"], BLACK, r.centerx, r.centery, r.width * 0.86)
+
+
+# ══════════════════════════════════════════════════════════════════
+#   회차 포기 확인 다이얼로그
+# ══════════════════════════════════════════════════════════════════
+class GiveUpConfirmDialog:
+    """진행 중인 회차를 포기하고 타이틀로 돌아갈지 확인."""
+    def __init__(self, screen, W, H, fonts):
+        self.screen = screen
+        self.W, self.H = W, H
+        self.fonts = fonts
+        self.selected = 1   # 기본값: 아니오
+
+    def _btn_rects(self):
+        W, H = self.W, self.H
+        dw, dh = int(W * 0.40), int(H * 0.20)
+        dx, dy = (W - dw) // 2, (H - dh) // 2
+        bw, bh = int(dw * 0.26), int(dh * 0.32)
+        gap = int(dw * 0.05)
+        by = dy + dh - bh - int(dh * 0.14)
+        return [
+            pygame.Rect(W // 2 - bw - gap, by, bw, bh),
+            pygame.Rect(W // 2 + gap,      by, bw, bh),
+        ]
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_a, pygame.K_d):
+                self.selected ^= 1
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                return "yes" if self.selected == 0 else "no"
+            elif event.key == pygame.K_ESCAPE:
+                return "no"
+        elif event.type == pygame.MOUSEMOTION:
+            for i, r in enumerate(self._btn_rects()):
+                if r.collidepoint(event.pos): self.selected = i
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for i, r in enumerate(self._btn_rects()):
+                if r.collidepoint(event.pos):
+                    play_click("confirm" if i == 0 else "cancel")
+                    return "yes" if i == 0 else "no"
+        return None
+
+    def update(self, dt): pass
+
+    def draw(self):
+        W, H = self.W, self.H
+        surf = self.screen
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 120))
+        surf.blit(dim, (0, 0))
+        dw, dh = int(W * 0.40), int(H * 0.20)
+        dx, dy = (W - dw) // 2, (H - dh) // 2
+        pygame.draw.rect(surf, WHITE, (dx, dy, dw, dh))
+        pygame.draw.rect(surf, BLACK, (dx, dy, dw, dh), 2)
+        draw_text_fit(surf, "회차를 포기하시겠습니까?",
+                      self.fonts["menu"], BLACK, W // 2, dy + int(dh * 0.30), dw * 0.88)
+        draw_text_fit(surf, "(타이틀로 돌아갑니다)",
+                      self.fonts["hint"], GRAY_D, W // 2, dy + int(dh * 0.48), dw * 0.88)
+        for i, (r, label) in enumerate(zip(self._btn_rects(), ["예", "아니오"])):
+            if i == self.selected:
+                pygame.draw.rect(surf, BLACK, r)
+                draw_text_fit(surf, label, self.fonts["menu"], WHITE, r.centerx, r.centery, r.width * 0.86)
+            else:
+                pygame.draw.rect(surf, WHITE, r)
+                pygame.draw.rect(surf, BLACK, r, 1)
+                draw_text_fit(surf, label, self.fonts["menu"], BLACK, r.centerx, r.centery, r.width * 0.86)
 
 
 # ══════════════════════════════════════════════════════════════════

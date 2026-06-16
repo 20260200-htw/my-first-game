@@ -16,11 +16,12 @@ class ShopScreen:
     반환값: "done"
     """
 
-    def __init__(self, screen, W, H, fonts):
+    def __init__(self, screen, W, H, fonts, popup=False):
         self.screen = screen
         self.W, self.H = W, H
         self.fonts = fonts
         self.hover = None
+        self.popup = popup   # True 면 맵 위에 딤+패널 팝업 형태로 그린다
 
         # 판매 목록 구성: 스킬 2 + 아이템 2 + 회복 1
         owned = [s["name"] for s in RUN.skills_owned]
@@ -99,7 +100,16 @@ class ShopScreen:
     def draw(self):
         W, H = self.W, self.H
         surf = self.screen
-        surf.fill(WHITE)
+        if self.popup:
+            # 맵 위에 띄우는 팝업: 반투명 딤 + 중앙 패널
+            dim = pygame.Surface((W, H), pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 150))
+            surf.blit(dim, (0, 0))
+            panel = pygame.Rect(int(W*0.06), int(H*0.07), int(W*0.88), int(H*0.86))
+            pygame.draw.rect(surf, WHITE, panel, border_radius=14)
+            pygame.draw.rect(surf, BLACK, panel, 3, border_radius=14)
+        else:
+            surf.fill(WHITE)
 
         draw_text(surf, "상점", self.fonts["title"], BLACK, W//2, int(H*0.12))
         draw_text_left(surf, f"보유 골드: {RUN.gold}", self.fonts["hint_bold"], (200,160,40),

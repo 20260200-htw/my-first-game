@@ -49,23 +49,46 @@ class SkillConfigScreen:
     def _list_top(self):
         return int(self.H*0.24)
 
+    def _list_bottom(self):
+        return int(self.H*0.92)
+
     def _row_h(self):
         return int(self.H*0.085)
+
+    def _scroll_of(self, side):
+        return self.scroll_eq if side == "eq" else self.scroll_own
 
     def _item_rect(self, side, i):
         cx = self._col_x(side)
         w  = int(self.W*0.40)
         h  = self._row_h()
         gap = int(self.H*0.018)
-        top = self._list_top()
+        top = self._list_top() - self._scroll_of(side)
         y = top + i*(h+gap)
         return pygame.Rect(cx - w//2, y, w, h)
+
+    def _max_scroll(self, side):
+        n = len(self._equipped()) if side == "eq" else len(self._unequipped())
+        h = self._row_h(); gap = int(self.H*0.018)
+        content = n*(h+gap)
+        view = self._list_bottom() - self._list_top()
+        return max(0, content - view)
 
     # ── 이벤트 ────────────────────────────────────────────────────
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 return "back"
+        elif event.type == pygame.MOUSEWHEEL:
+            mx, _my = pygame.mouse.get_pos()
+            side = "eq" if mx < self.W // 2 else "own"
+            step = int(self.H*0.05)
+            if side == "eq":
+                self.scroll_eq = max(0, min(self._max_scroll("eq"),
+                                            self.scroll_eq - event.y * step))
+            else:
+                self.scroll_own = max(0, min(self._max_scroll("own"),
+                                             self.scroll_own - event.y * step))
         elif event.type == pygame.MOUSEMOTION:
             self.hover_side = None
             for i in range(len(self._equipped())):
@@ -138,6 +161,9 @@ class SkillConfigScreen:
                   self._col_x("own"), int(H*0.16))
         draw_text(surf, "클릭하면 장착", self.fonts["small"], GRAY, self._col_x("own"), int(H*0.205))
 
+        # 클리핑 영역 (스크롤 시 헤더/하단 침범 방지)
+        clip = pygame.Rect(0, self._list_top()-2, W, self._list_bottom()-self._list_top()+4)
+        surf.set_clip(clip)
         # 좌측 목록
         if not eq:
             draw_text(surf, "(장착된 스킬 없음)", self.fonts["hint"], GRAY,
@@ -151,11 +177,12 @@ class SkillConfigScreen:
                       self._col_x("own"), self._list_top()+int(H*0.05))
         for i, s in enumerate(un):
             self._draw_skill_row("own", i, s)
+        surf.set_clip(None)
 
     def _draw_skill_row(self, side, i, skill):
         surf = self.screen
         r = self._item_rect(side, i)
-        if r.bottom < int(self.H*0.18) or r.top > int(self.H*0.95):
+        if r.bottom < self._list_top() or r.top > self._list_bottom():
             return
         hovered = self.hover_side == (side, i)
         bg = HOVER if hovered else (EQUIP_BG if side == "eq" else OWN_BG)

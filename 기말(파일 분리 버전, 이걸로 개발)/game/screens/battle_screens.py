@@ -34,11 +34,14 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
     STATE_OVER   = "over"
     STATE_EXEC_INTRO = "exec_intro"  # 실행 직전: 레터박스만 올라오고 대기(로딩)
     STATE_TURN_END   = "turn_end"    # 턴 종료: 페이드아웃 → n턴 종료 → 페이드인
+    STATE_CLEAR  = "clear"           # 승리: STAGE CLEAR 연출 후 자동 종료
 
     # 연출 타이밍(ms)
     EXEC_INTRO_HOLD  = 350   # 레터박스 올라온 뒤 대기 시간
     TURN_END_FADE    = 250   # 페이드 인/아웃 각각 시간
     TURN_END_HOLD    = 500   # "n턴 종료" 표시 유지 시간
+    CLEAR_FADE       = 450   # STAGE CLEAR 페이드 인/아웃
+    CLEAR_HOLD       = 1500  # STAGE CLEAR + 보상 표시 유지
     TAB_NAMES = ["개요", "스킬", "패시브"]
     def __init__(self, screen, W, H, fonts, enemies, allies, enemy_formation="솔캐리_전방", ally_formation="트리오", gap=0.12):
         self.screen  = screen
@@ -112,7 +115,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self.skill_selected  = 0
         self.defense_selected = 0
         self.pending_is_defense = False
-        self.UI_ITEMS        = ["스킬", "수비", "아이템"]
+        self.UI_ITEMS        = ["스킬", "수비"]
         self.pending_skill   = None   # 선택한 스킬 (대상 선택 대기)
         self.current_actor   = None
         self._exec_pending   = None
@@ -122,6 +125,12 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self.logic.start_turn()
         self.enemy_timer = 0.0
         self._sync_turn()
+
+        # ── 연출 상태 ──
+        self.reward_preview = None   # 승리 보상 미리보기 {"levels":n, "gold":n, "extra":문구}
+        self._fx_timer = 0.0
+        self._fx_phase = None        # "in"/"hold"/"out"
+        self._battle_done = False    # STAGE CLEAR 연출 완료 → handle_event가 "back" 자동 반환
 
         self.inspect_enemy   = None
         self.inspect_ally    = None
@@ -418,6 +427,13 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         if event.type == pygame.KEYDOWN:
             if self.state in (self.STATE_ANIM, self.STATE_ROLL):
                 return None  # 모션/룰렛 중 입력 무시
+            # 전투 종료(승리 연출/패배) 상태: Enter/Space/ESC 로 종료
+            if self.state in (self.STATE_OVER, self.STATE_CLEAR):
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE, pygame.K_ESCAPE):
+                    pygame.mixer.music.stop()
+                    reset_bgm_state()
+                    return "back"
+                return None
             if event.key == pygame.K_ESCAPE:
                 if self.state in (self.STATE_TARGET, self.STATE_SKILL):
                     pass  # 각 상태에서 개별 처리
@@ -430,7 +446,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                         pygame.mixer.music.stop()
                         reset_bgm_state()
                         return "back"
-                elif self.state in (self.STATE_OVER, self.STATE_ENEMY):
+                elif self.state in (self.STATE_OVER, self.STATE_ENEMY, self.STATE_CLEAR):
                     pygame.mixer.music.stop()
                     reset_bgm_state()
                     return "back"
@@ -649,7 +665,10 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
     def _sync_turn(self):
         """계획/실행 단계에 맞춰 상태 전환"""
         if self.logic.battle_over:
-            self.state = self.STATE_OVER
+            if self.logic.winner == "ally" and self.state != self.STATE_CLEAR:
+                self._begin_clear()
+            elif self.logic.winner != "ally":
+                self.state = self.STATE_OVER
             return
         if not self.logic.is_planning_done():
             # 실행 중이었다가 계획 단계로 돌아왔다면 = 한 턴이 끝난 것
@@ -679,10 +698,32 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
         self.roll = None
         self.anim = None
         self._clear_total()
+
+    def set_reward_preview(self, levels=0, gold=0, extra=None):
+        """승리 시 STAGE CLEAR 화면에 표시할 보상 미리보기 설정 (main에서 호출)."""
+        self.reward_preview = {"levels": levels, "gold": gold, "extra": extra}
+
+    def _begin_clear(self):
+        """승리 연출(STAGE CLEAR) 시작: 페이드인 → 보상 표시 → 페이드아웃 → 자동 종료."""
+        self.state = self.STATE_CLEAR
+        self._fx_phase = "in"
+        self._fx_timer = 0.0
+        self.roll = None
+        self.anim = None
+        self._clear_total()
+        # 승리 BGM 정리(있다면)
+        try:
+            import pygame as _pg
+            _pg.mixer.music.fadeout(800)
+        except Exception:
+            pass
     def _exec_next(self):
         """실행 단계: 현재 행동자의 예약 행동을 실행"""
         if self.logic.battle_over:
-            self.state = self.STATE_OVER
+            if self.logic.winner == "ally" and self.state != self.STATE_CLEAR:
+                self._begin_clear()
+            elif self.logic.winner != "ally":
+                self.state = self.STATE_OVER
             return
         actor = self.logic.current_actor()
         if actor is None:
@@ -807,6 +848,18 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
             self.menu_selected = 0
             self.current_actor = self.logic.planning_actor()
     def update(self, dt):
+        # ── 승리 연출 (STAGE CLEAR): 페이드인 → 보상 표시 유지 → (end_battle_fade가 덮으며 종료) ──
+        if self.state == self.STATE_CLEAR:
+            self._fx_timer += dt
+            if self._fx_phase == "in":
+                if self._fx_timer >= self.CLEAR_FADE:
+                    self._fx_phase = "hold"; self._fx_timer = 0.0
+            elif self._fx_phase == "hold":
+                if self._fx_timer >= self.CLEAR_HOLD:
+                    self._fx_phase = "hold_done"
+                    self._battle_done = True   # 표시 유지 끝 → 외부 페이드(end_battle_fade)로 종료
+            return
+
         # ── 피격 움찔 + 빨간 오버레이 (같은 타이머로 동기화) ──
         # hit_push_t: 0.22→0 으로 감소. 움찔 위치와 빨강 농도 모두 이 진행도를 공유.
         HIT_DUR = 0.22
@@ -885,7 +938,7 @@ class BattleScreen(BattleAnimMixin, BattleDrawMixin):
                 if pend:
                     actor, skill, primary = pend
                     self._start_total(actor)
-                    _res = self.logic.use_skill(actor, skill, primary_target=primary)
+                    _res = self.logic.use_skill(actor, skill, primary_target=primary, already_charged=True)
                     self._play_skill_sound(skill)
                     self._register_damage(_res)
                     self._exec_pending = None

@@ -91,6 +91,17 @@ class Combatant:
         self.dodging     = False   # 이번 턴 회피 중
         self.dodge_power = 0       # 이번 턴 회피 위력 (0이면 회피 안 함)
         self.guarding    = False   # 이번 턴 방어 중 (조건부 스킬 판정용)
+        self.damaged_by_this_turn = set()  # 이번 턴에 자신에게 피해를 입힌 공격자들 (카운터 스킬 판정용)
+        self.mp_spent_this_turn = 0   # 이번 턴 소모 마력 (여우불 등)
+        self.mp_spent_total     = 0   # 전투 누적 소모 마력 (마력 발산 트리거용)
+        self._used_magic_this_turn = False   # 이번 턴 마법 스킬 사용 여부 (무형검 중첩용)
+        # ── 오로치(멀티헤드 보스) 상태 ──
+        self.is_orochi_head = (defn.get("name") == "오로치의 또다른 머리")  # 또다른 머리인가
+        self.is_orochi_center = self.has_passive("가운데 머리")              # 가운데 머리인가
+        self.orochi_heads_alive = 1      # 살아있는 머리 총 수 (가운데 포함) — 매턴 갱신
+        self.orochi_devoured = False     # '맛있구나' 발동(폭주 모드)
+        self.orochi_speed0 = False       # 이번 턴 속도 0 강제 (포식 턴 비사용 머리)
+        self.orochi_forced_skill = None  # 이번 턴 강제로 사용할 스킬 (포식/아마노무라쿠모)
         # 피격 움찔 (월드 x 오프셋, 시간에 따라 0으로 복귀) + 빨간 깜빡임
         self.hit_push    = 0.0     # 현재 움찔 거리(px, 월드 기준)
         self.hit_push_t  = 0.0     # 남은 복귀 시간(초)
@@ -181,6 +192,24 @@ class Combatant:
     def roll_speed(self):
         """매 턴 속도 결정. 속도 0이면 행동 불가(None 반환)"""
         import random
+        # ── 오로치 속도 규칙 (다른 규칙보다 우선) ──
+        if getattr(self, "is_orochi_center", False):
+            others_alive = getattr(self, "orochi_heads_alive", 1) > 1
+            if getattr(self, "orochi_devoured", False):
+                self.speed = 80          # 폭주: 속도 80 고정
+                return self.speed
+            if others_alive:
+                self.speed = 0           # 다른 머리 살아있으면 가운데는 속도 0(행동 불가)
+                return self.speed
+            # 가운데만 남음: 평소엔 0이지만, 강제 스킬(아마노무라쿠모) 예약 턴엔 행동
+            if getattr(self, "orochi_forced_skill", None) is not None:
+                self.speed = 50
+                return self.speed
+            self.speed = 0
+            return self.speed
+        if getattr(self, "orochi_speed0", False):
+            self.speed = 0               # 포식 턴: 행동 머리 외 나머지 속도 0
+            return self.speed
         spd = self.defn.get("speed", None)
         spd_min = self.defn.get("speed_min", None)
         spd_max = self.defn.get("speed_max", None)
@@ -215,6 +244,12 @@ class Combatant:
             tails = self.defn.get("tails", 8)
             out.append({"kind": "deal_mult", "value": 1 + 0.05 * tails})
             out.append({"kind": "take_mult", "value": max(0.0, 1 - 0.05 * tails)})
+        # 약자 사냥: 자신보다 속도가 낮은 대상에게 주는 피해 +5%
+        if self.has_passive("약자 사냥"):
+            out.append({"kind": "deal_mult", "value": 1.05, "if_target_speed_below_self": True})
+        # 무형검류(소천): 자신보다 마법 레벨이 낮은 적에게 주는 피해 +10%
+        if self.has_passive("무형검류"):
+            out.append({"kind": "deal_mult", "value": 1.10, "if_target_magic_level_below_self": True})
         return out
 
     def _buff_effects(self):
@@ -260,6 +295,14 @@ class Combatant:
             if self_below is not None:
                 if self.hp_max <= 0 or (self.hp / self.hp_max) > self_below:
                     continue
+            # 대상 속도가 자신보다 낮을 때만 (예: 약자 사냥)
+            if e.get("if_target_speed_below_self"):
+                if target is None or getattr(target, "speed", 0) >= getattr(self, "speed", 0):
+                    continue
+            # 대상 마법 레벨이 자신보다 낮을 때만 (예: 무형검류)
+            if e.get("if_target_magic_level_below_self"):
+                if target is None or getattr(target, "magic_level", 0) >= getattr(self, "magic_level", 0):
+                    continue
             mult *= e.get("value", 1.0)
         return mult
 
@@ -269,6 +312,13 @@ class Combatant:
         for e in self._iter_effects():
             if e.get("kind") == "take_mult":
                 mult *= e.get("value", 1.0)
+        # 오로치 가운데 머리: 다른 머리가 살아있으면 받는 피해 100% 감소(무적)
+        if getattr(self, "is_orochi_center", False) and getattr(self, "orochi_heads_alive", 1) > 1:
+            return 0.0
+        # 오로치 만족감: 중첩당 받는 피해 +50%
+        sat = self.buff_stacks("만족감")
+        if sat > 0:
+            mult *= (1.0 + 0.5 * sat)
         return max(0.0, mult)
 
     def active_effect_labels(self):
@@ -351,11 +401,44 @@ class Combatant:
         return any(p["name"] == name for p in self.passives)
 
     # 코드로 구현되어 실제 작동하는 패시브 이름 (정적 effects 외)
-    IMPLEMENTED_PASSIVES = {"전황 분석", "바다의 처형자", "나는 검이 두 자루야~"}
+    IMPLEMENTED_PASSIVES = {"전황 분석", "바다의 처형자", "나는 검이 두 자루야~", "약자 사냥",
+                            "무형검류", "검으로 다지는 초석"}
+
+    def has_sure_hit(self, skill, target=None):
+        """이 스킬이 대상에게 '필중'으로 적용되는가 (회피를 무시하는가).
+        기본: tags 에 '필중' 이 있으면 True.
+        무형검류(소천): 대상의 마법 레벨이 자신보다 높으면 필중이 무효가 된다."""
+        if "필중" not in skill.get("tags", []):
+            return False
+        if self.has_passive("무형검류") and target is not None:
+            if getattr(target, "magic_level", 0) > getattr(self, "magic_level", 0):
+                return False
+        return True
+
+    # ── 마력 발산 ─────────────────────────────────────────────
+    # 누적 소모 마력이 (최대 마력 × 임계치) 이상이 되면 '마력 발산' 상태가 된다.
+    # 이때 패시브와 '같은 이름'의 버프가 켜지며, 한 번 켜지면 전투 내내 유지된다.
+    # 임계치는 캐릭터마다 다르게 줄 수 있다 — 각 '마력 발산 - X' 패시브에
+    # "threshold": 0.5 처럼 0~1 비율로 지정한다. 지정이 없으면 아래 기본값을 쓴다.
+    MARYEOK_DEFAULT_THRESHOLD = 0.5   # 기본: 최대 마력의 50% 소모 시 발동
+
+    def _update_maryeok(self):
+        """누적 소모 마력이 임계치를 넘긴 '마력 발산' 패시브의 버프를 켠다.
+        마력을 소모한 직후, 그리고 매 턴 시작 시 호출된다 (멱등)."""
+        if self.mp_max <= 0:
+            return
+        for p in self.passives:
+            name = p.get("name", "")
+            if "마력 발산" not in name:
+                continue
+            thr = p.get("threshold", self.MARYEOK_DEFAULT_THRESHOLD)
+            if self.mp_spent_total >= self.mp_max * thr and not self.get_buff(name):
+                # 패시브와 같은 이름의 버프를 켠다 (전투 내내 유지)
+                self.add_buff(name, max_stacks=1, duration=99999)
 
     def is_maryeok_active(self):
-        """'마력 발산' 상태 여부. (아직 미구현 → 항상 False)"""
-        return False
+        """'마력 발산' 상태 여부 = '마력 발산' 이름의 버프가 켜져 있는가."""
+        return any("마력 발산" in b["name"] for b in self.active_buffs)
 
     def passive_status(self, passive):
         """패시브의 현재 상태 라벨: 'ON' / 'OFF' / 'NONE'
@@ -379,6 +462,8 @@ class Combatant:
 
     def on_turn_start(self, logic=None):
         """매 턴(계획 페이즈) 시작 시 발동하는 패시브 처리."""
+        # 마력 발산: 누적 소모 마력이 임계치를 넘겼으면 버프를 켠다.
+        self._update_maryeok()
         # 전황 분석: 매 턴 시작 시 중첩 +1 (중첩당 주는 피해 +5%)
         if self.has_passive("전황 분석"):
             self.add_buff("전황 분석", max_stacks=99, duration=999,
@@ -396,6 +481,16 @@ class Combatant:
                 if gain > 0:
                     self.add_buff_stacks("여우불", gain, max_stacks=max_stack,
                                          icon="assets/ETs/ETs_foxfire.png")
+        # 검으로 다지는 초석(소천): 직전 턴에 '마법 스킬'을 썼다면 '무형검' 중첩 +1.
+        # 중첩이 최대(muhyeong_max)가 되면 강력기(무형만참)를 require_buff 로 사용한다.
+        if self.has_passive("검으로 다지는 초석"):
+            if getattr(self, "_used_magic_this_turn", False):
+                max_stack = self.defn.get("muhyeong_max", 4)
+                cur = self.buff_stacks("무형검")
+                if cur < max_stack:
+                    self.add_buff_stacks("무형검", 1, max_stacks=max_stack, icon="")
+        # 턴 시작 시 이번 턴 마법 사용 플래그 리셋
+        self._used_magic_this_turn = False
         # 턴 시작 시 이번 턴 소모 마력 리셋
         self.mp_spent_this_turn = 0
         # 재생의 반지 등: 턴 시작 시 체력 회복 (effect: regen)
@@ -450,6 +545,18 @@ class Combatant:
             return bool(t and t.hp_max > 0 and (t.hp / t.hp_max) <= (arg if arg is not None else 0.5))
         if key == "target_level_below":
             return bool(t and getattr(t, "level", 0) < self.level)
+        if key == "self_speed_below_target":
+            # 자신의 속도가 대상보다 느림 (예: 기습 — 느리면 위력 0)
+            return bool(t and getattr(self, "speed", 0) < getattr(t, "speed", 0))
+        if key == "target_speed_below_self":
+            # 대상의 속도가 자신보다 느림
+            return bool(t and getattr(t, "speed", 0) < getattr(self, "speed", 0))
+        if key == "damaged_by_target":
+            # 이번 턴에 대상으로부터 피해를 받았음 (카운터 성립)
+            return bool(t and t in self.damaged_by_this_turn)
+        if key == "not_damaged_by_target":
+            # 이번 턴에 대상으로부터 피해를 받지 않았음 (받아치겠습니다 — 위력 0 조건)
+            return not (t and t in self.damaged_by_this_turn)
         return True
 
     def _apply_skill_conditions(self, skill, target, power):
@@ -520,12 +627,16 @@ class Combatant:
         """회피 최종 위력 = 레벨 + 아이템 보정"""
         return self.level + item_bonus
 
-    def take_damage(self, dmg):
+    def take_damage(self, dmg, attacker=None):
         """피해 적용. 차감 우선순위: 원호 보호막 → 일반 보호막 → 체력.
         원호 보호막이 흡수한 만큼은 그 보호막을 부여한 시전자에게 전가된다.
+        attacker: 이 피해를 입힌 공격자 (카운터 스킬 판정용, 선택).
         반환값 = 들어온 총 피해(보호막이 흡수한 양 포함). 표시용."""
         dmg = int(dmg)
         incoming = dmg   # 들어온 총 피해 (표시용)
+        # 이번 턴 피격 기록 (실제로 피해가 들어온 경우에만)
+        if attacker is not None and incoming > 0:
+            self.damaged_by_this_turn.add(attacker)
         # 1) 원호 보호막 (흡수분은 caster 에게 전가)
         for sh in self.assist_shields:
             if dmg <= 0:

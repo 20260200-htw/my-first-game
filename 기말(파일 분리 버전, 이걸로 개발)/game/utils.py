@@ -118,14 +118,21 @@ SCREEN_BGM = {
 
 _current_bgm = None     # 현재 재생 중인 BGM 파일 경로 (None=없음)
 
-def update_bgm(screen_key):
+def update_bgm(screen_key, region=None):
     """현재 화면에 맞는 BGM 으로 전환한다. 매 프레임 호출해도 안전하다.
     - 매핑에 없는 화면 키는 무시(현재 BGM 유지) → 전투 등 자체 제어 화면 보호.
-    - 같은 곡이면 재로드하지 않는다."""
+    - 같은 곡이면 재로드하지 않는다.
+    - screen_key == "map" 이고 region 이 주어지면, 구역별 OST(REGION_BGM)를
+      먼저 시도하고 없으면 공통 map 트랙으로 폴백한다."""
     global _current_bgm
     if screen_key not in SCREEN_BGM:
         return
     target = SCREEN_BGM[screen_key]
+    if screen_key == "map" and region is not None:
+        from data import run_data
+        region_track = run_data.region_bgm_path(region)
+        if region_track is not None:
+            target = region_track
     if target == _current_bgm:
         # 같은 곡: 음량만 설정 반영
         try:
@@ -159,13 +166,55 @@ def reset_bgm_state():
     _current_bgm = None
 
 
-def draw_text(surf, text, font, color, cx, cy):
-    img = font.render(text, True, color)
+def _render_outlined(font, text, color, outline_color, outline_w):
+    """글자에 외곽선을 두른 Surface 반환."""
+    base = font.render(text, True, color)
+    if outline_w <= 0:
+        return base
+    ow = outline_w
+    w, h = base.get_width(), base.get_height()
+    surf = pygame.Surface((w + ow*2, h + ow*2), pygame.SRCALPHA)
+    outline_img = font.render(text, True, outline_color)
+    # 8방향 + 대각선으로 외곽선 깔기
+    offsets = []
+    for dx in range(-ow, ow+1):
+        for dy in range(-ow, ow+1):
+            if dx == 0 and dy == 0:
+                continue
+            if dx*dx + dy*dy <= ow*ow + 1:
+                offsets.append((dx, dy))
+    for dx, dy in offsets:
+        surf.blit(outline_img, (ow + dx, ow + dy))
+    surf.blit(base, (ow, ow))
+    return surf
+
+
+def draw_text(surf, text, font, color, cx, cy, outline=None, outline_w=2):
+    if outline is not None:
+        img = _render_outlined(font, text, color, outline, outline_w)
+    else:
+        img = font.render(text, True, color)
     surf.blit(img, img.get_rect(center=(cx, cy)))
 
 
-def draw_text_left(surf, text, font, color, x, cy):
-    img = font.render(text, True, color)
+def draw_text_fit(surf, text, font, color, cx, cy, max_w, outline=None, outline_w=2):
+    """렌더한 글자가 max_w(px)를 넘으면 그 폭에 맞게 줄여서 그린다. (글자 튀어나옴 방지)"""
+    if outline is not None:
+        img = _render_outlined(font, text, color, outline, outline_w)
+    else:
+        img = font.render(text, True, color)
+    w = img.get_width()
+    if w > max_w and w > 0:
+        h = max(1, int(img.get_height() * (max_w / w)))
+        img = pygame.transform.smoothscale(img, (int(max_w), h))
+    surf.blit(img, img.get_rect(center=(cx, cy)))
+
+
+def draw_text_left(surf, text, font, color, x, cy, outline=None, outline_w=2):
+    if outline is not None:
+        img = _render_outlined(font, text, color, outline, outline_w)
+    else:
+        img = font.render(text, True, color)
     surf.blit(img, img.get_rect(midleft=(x, cy)))
 
 

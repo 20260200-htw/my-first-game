@@ -54,7 +54,7 @@ class RunResultScreen:
 
         draw_text(surf, f"최종 레벨: Lv.{self.final_level}  ·  보유 스킬 {self.skill_count}개",
                   self.fonts["menu"], WHITE, W//2, int(H*0.52))
-        draw_text(surf, "스킬은 다음 회차에도 유지됩니다. (레벨·포인트·아이템은 초기화)",
+        draw_text(surf, "레벨과 스킬, 아이템은 다음 회차에도 유지됩니다.",
                   self.fonts["hint"], GRAY, W//2, int(H*0.58))
 
         ok = self._ok_rect()

@@ -16,20 +16,63 @@
   },
   "growth": {
     "주인공": {
-      "level": 10,
+      "level": 12,
       "exp": 0,
-      "phys_level": 10,
-      "magic_level": 10,
-      "hp_bonus": 0,
+      "phys_level": 21,
+      "magic_level": 1,
+      "hp_bonus": 16,
       "spd_bonus": 0,
       "deal_bonus": 0,
       "take_bonus": 0,
       "basic_point": 0,
-      "extra_point": 10
+      "extra_point": 0
     }
   },
   "skills": {
+    "owned": [
+      {
+        "name": "때리기",
+        "power": 5,
+        "type": "물리",
+        "side": "적",
+        "count": "단일",
+        "hits": 1,
+        "tags": [],
+        "motion": "stationary",
+        "sprite": "",
+        "desc": [
+          "기본적인 물리 공격."
+        ]
+      },
+      {
+        "name": "마탄",
+        "power": 5,
+        "type": "마법",
+        "side": "적",
+        "count": "단일",
+        "hits": 1,
+        "tags": [],
+        "motion": "cast",
+        "sprite": "",
+        "desc": [
+          "기본적인 마법 공격."
+        ]
+      }
+    ],
+    "equipped": [
+      "때리기",
+      "마탄"
+    ]
+  },
+  "items": {
     "owned": [],
     "equipped": []
+  },
+  "progress": {
+    "normal_cleared": false,
+    "challenge_cleared": [],
+    "extreme_cleared": [],
+    "final_cleared": false,
+    "game_complete": false
   }
 }

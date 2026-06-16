@@ -11,7 +11,10 @@ class BattleAnimMixin:
         if skill.get("def_kind"):
             final_power = actor.defense_skill_power(skill)   # 수비: 회피=레벨/2, 방어/원호=보호막
         else:
-            final_power = actor.calc_skill_power(skill)
+            # 조건부 위력(cond)이 대상에 의존하므로 대표 대상을 넘긴다.
+            # (예: 받아치겠습니다 - 이번 턴 그 대상에게 맞았는지, 무형만참 - 대상 방어 여부)
+            roll_target = primary if primary is not None else (targets[0] if targets else None)
+            final_power = actor.calc_skill_power(skill, roll_target)
         self.roll = {
             "actor": actor, "skill": skill, "primary": primary, "targets": targets,
             "timer": 0.0, "final_power": int(round(final_power)),
@@ -26,8 +29,9 @@ class BattleAnimMixin:
         actor, skill, primary, targets = r["actor"], r["skill"], r["primary"], r["targets"]
         r["display"] = r["final_power"]   # 룰렛 숫자 고정 (모션 중 유지)
         # 마력/중첩 소모는 스킬 발동 시작 시 1회만 (다단히트 무관)
+        # 이후 use_skill 경로에는 already_charged=True 로 알려 중복 소모를 막는다.
+        # (스킬 객체에 상태를 남기지 않으므로 다음 턴 재사용에 영향 없음)
         self.logic.consume_skill_cost(actor, skill)
-        skill["_cost_charged"] = True     # use_skill 경로 중복 소모 방지 플래그
         motion = skill.get("motion")
         # 전용 모션이면 스프라이트 시퀀스 시작 + 베이스 연출로 치환
         from data import motion_data
@@ -260,7 +264,7 @@ class BattleAnimMixin:
                     self.logic.apply_defense_skill(a["actor"], a["skill"], primary=a["primary"])
                     _res = []
                 elif self.logic.is_support(a["skill"]):
-                    _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"])
+                    _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"], already_charged=True)
                 else:
                     _res = self.logic.apply_single_hit(a["actor"], a["skill"], a["targets"], a.get("fraction", 1.0))
                     self.shake_timer = 100
@@ -302,7 +306,7 @@ class BattleAnimMixin:
         elif phase == "zoom_out":
             # 축소 시작 시 효과 적용 + 대상 전원 이펙트
             if not a.get("applied"):
-                _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"])
+                _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"], already_charged=True)
                 self._play_skill_sound(a["skill"])
                 self._register_damage(_res)
                 a["applied"] = True
@@ -329,7 +333,7 @@ class BattleAnimMixin:
             self.logic.apply_defense_skill(a["actor"], a["skill"], primary=a["primary"])
             _res = []
         elif self.logic.is_support(a["skill"]):
-            _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"])
+            _res = self.logic.use_skill(a["actor"], a["skill"], primary_target=a["primary"], already_charged=True)
         else:
             _res = self.logic.apply_single_hit(a["actor"], a["skill"], a["targets"],
                                                a.get("fraction", 1.0))
@@ -571,8 +575,12 @@ class BattleAnimMixin:
                     except Exception:
                         pass
     def _play_skill_sound(self, skill):
-        """스킬 효과음 재생 (skill["sound"] 경로). 없으면 무시."""
+        """스킬 효과음 재생 (skill["sound"] 경로). 지정이 없거나 파일이 없으면
+        공용 효과음(run_data.DEFAULT_SKILL_SOUND)으로 대체. 그것도 없으면 무음."""
+        from data import run_data
         path = skill.get("sound", "")
+        if not path or not os.path.exists(path):
+            path = run_data.DEFAULT_SKILL_SOUND
         if not path or not os.path.exists(path):
             return
         try:

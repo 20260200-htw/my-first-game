@@ -786,6 +786,10 @@ class BattleDrawMixin:
         if self.state == self.STATE_TURN_END:
             self._draw_turn_end_overlay()
 
+        # ── 승리(STAGE CLEAR) 연출 ──
+        if self.state == self.STATE_CLEAR:
+            self._draw_clear_overlay()
+
     def _draw_turn_end_overlay(self):
         """페이드아웃 → n턴 종료 표시 → 페이드인. 알파는 phase/timer로 계산."""
         W, H = self.W, self.H
@@ -815,9 +819,53 @@ class BattleDrawMixin:
             rect = img.get_rect(center=(W // 2, H // 2))
             surf.blit(img, rect)
 
+    def _draw_clear_overlay(self):
+        """승리 연출: 검은 페이드 + 'STAGE CLEAR' + 보상/경험치/골드."""
+        W, H = self.W, self.H
+        surf = self.screen
+        phase = self._fx_phase
+        t = self._fx_timer
+        if phase == "in":
+            a = min(1.0, t / self.CLEAR_FADE)
+        else:
+            a = 1.0   # hold / hold_done: 풀 표시 유지 (퇴장은 end_battle_fade 페이드가 담당)
+        veil = pygame.Surface((W, H), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, int(225 * a)))
+        surf.blit(veil, (0, 0))
+        if a <= 0.15:
+            return
+        ta = min(255, int((a - 0.15) / 0.85 * 255))
+
+        def _txt(text, font, color, cy):
+            img = font.render(text, True, color)
+            if ta < 255:
+                img = img.copy(); img.set_alpha(ta)
+            surf.blit(img, img.get_rect(center=(W//2, cy)))
+
+        # STAGE CLEAR (금색)
+        _txt("STAGE CLEAR", self.fonts["title"], (255, 215, 90), int(H*0.34))
+        # 보상 헤더
+        rp = self.reward_preview or {}
+        _txt("보상", self.fonts["menu"], (235, 235, 235), int(H*0.49))
+        levels = rp.get("levels", 0)
+        gold = rp.get("gold", 0)
+        extra = rp.get("extra")
+        lines = []
+        if levels:
+            lines.append(f"경험치  +{levels} Lv")
+        else:
+            lines.append("경험치  -")
+        lines.append(f"골드  +{gold}")
+        if extra:
+            lines.append(extra)
+        y = int(H*0.56)
+        for ln in lines:
+            _txt(ln, self.fonts["hint_bold"], (245, 240, 220), y)
+            y += int(H*0.052)
+
     def _draw_turn_order(self):
         """좌측 상단 행동 서열 UI (현재 행동자부터 최대 3개 + 턴 종료)"""
-        if self.state == self.STATE_OVER:
+        if self.state in (self.STATE_OVER, self.STATE_CLEAR):
             return
         W, H = self.W, self.H
         surf = self.screen

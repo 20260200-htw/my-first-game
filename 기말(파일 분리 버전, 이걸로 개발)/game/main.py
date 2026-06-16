@@ -14,7 +14,8 @@ from data.archive_data import GLOSSARY, COMPENDIUM
 from screens.menu_screens import (
     TitleScreen, SettingsScreen, GalleryScreen,
     CompendiumMenuScreen, CompendiumDetailScreen, GlossaryDetailScreen,
-    PlaceholderScreen, QuitDialog, GameStartScreen, ResetConfirmDialog
+    PlaceholderScreen, QuitDialog, GameStartScreen, ResetConfirmDialog,
+    PauseMenu, GiveUpConfirmDialog
 )
 from screens.battle_screens import BattleScreen
 from screens.menu_screens import BattleSelectScreen
@@ -36,6 +37,8 @@ from screens.reward_screen import RewardScreen
 from screens.shop_screen import ShopScreen
 from screens.event_screen import EventScreen
 from screens.run_result_screen import RunResultScreen
+from screens.boss_mode_screen import BossSelectScreen, CreditsScreen
+from screens.fade_transition import FadeTransition
 from screens.skill_config_screen import SkillConfigScreen
 from screens.item_view_screen import ItemViewScreen
 
@@ -69,18 +72,13 @@ def _finish_node(screen, W, H, fonts):
 
 
 def _after_segment(screen, W, H, fonts):
-    """구간 종료 후: 다음 구간 지역 선택 또는 마왕성 진입.
+    """구간 종료 후: 다음 구간 지역 선택. 5구간(마지막) 보스 클리어 시 회차 완료.
     반환: (current, map_sc, region_sc)
     """
     if RUN.segment >= run_data.FINAL_SEGMENT:
-        # 마왕성 종료 = 클리어(전투에서 result 처리됨). 안전망.
+        # 5구간(마지막 지역) 보스 클리어 = 일반 모드 완료 → 결과 화면 (전투 쪽에서 처리됨). 안전망.
         return ("map", MapScreen(screen, W, H, fonts), None)
-    if RUN.segment >= run_data.FINAL_SEGMENT - 1:
-        # 5구간 종료 → 마왕성 진입
-        RUN.last_region = RUN.region
-        RUN.enter_maw()
-        return ("map", MapScreen(screen, W, H, fonts), None)
-    # 다음 구간 지역 선택
+    # 다음 구간 지역 선택 (아직 방문 안 한 지역 중)
     RUN.last_region = RUN.region
     return ("region_select", None, RegionSelectScreen(screen, W, H, fonts))
 
@@ -102,6 +100,11 @@ def main():
     current      = "title"
     overlay      = None
     quit_dlg     = None
+    pause_menu   = None   # 게임 중 ESC 일시정지 메뉴
+    pause_bg     = None   # 일시정지 진입 시 캡처한 정지 배경 (깜빡임 방지)
+    giveup_dlg   = None   # 회차 포기 확인
+    menu_return  = None   # 설정/아카이브를 게임 중 열었을 때 복귀할 화면 ("map"/"region_select")
+    settings_back = None  # 설정 팝업을 닫은 뒤 복귀할 오버레이 ("pause") / None(타이틀)
     placeholder  = None
     story_sc     = None
     act_menu_sc  = None   # 막 내부 메뉴
@@ -117,6 +120,11 @@ def main():
     battle_sc        = None
     gamestart_sc     = None
     battle_select_sc = None
+    boss_select_sc = None
+    credits_sc = None
+    fade_sc = None      # FadeTransition (게임시작→구역선택, 구역선택→맵 전환용)
+    fade_bg_draw = None # fade 중 검은 베일 뒤에 그릴 화면(콜백)
+    fade_display_key = None  # fade 중 _draw_current_screen 이 표시할 화면 키
     # ── 로그라이크 화면 핸들 ──────────────────────────────────────
     region_sc   = None
     map_sc      = None
@@ -157,11 +165,71 @@ def main():
     def gloss_top():
         return gloss_stack[-1] if gloss_stack else None
 
+    def _draw_current_screen():
+        """fade 전환 중 '뒤 화면'을 그리기 위한 디스패처.
+        current 가 'fade'인 동안은 fade_display_key 가 실제 표시할 화면을 가리킨다."""
+        key = fade_display_key if current == "fade" else current
+        if key == "battle" and battle_sc:
+            battle_sc.draw()
+        elif key == "map" and map_sc:
+            map_sc.draw()
+        elif key == "region_select" and region_sc:
+            region_sc.draw()
+        elif key == "reward" and reward_sc:
+            reward_sc.draw()
+        elif key == "event" and event_sc:
+            event_sc.draw()
+        elif key == "run_result" and result_sc:
+            result_sc.draw()
+        elif key == "boss_select" and boss_select_sc:
+            boss_select_sc.draw()
+        elif key == "rl_dialogue" and rl_dialogue_sc:
+            rl_dialogue_sc.draw()
+        elif key == "placeholder" and placeholder:
+            placeholder.draw()
+        elif key == "story" and story_sc:
+            story_sc.draw()
+        elif key == "dialogue" and dialogue_sc:
+            dialogue_sc.draw()
+        elif key == "loading" and loading_sc:
+            loading_sc.draw()
+        elif key == "title":
+            title.draw()
+        else:
+            screen.fill((0, 0, 0))
+
+    def start_battle_fade(build_battle_fn):
+        """전투 진입 페이드: 현재 화면을 검게 덮음(1초) → build_battle_fn()으로
+        battle_sc 생성 + current='battle' → 페이드아웃(1초, BATTLE START로 이어짐)."""
+        nonlocal fade_sc, fade_bg_draw, fade_display_key, current
+        fade_display_key = current   # 덮이기 전: 현재(맵 등) 화면을 표시
+        def _cover():
+            nonlocal current, fade_display_key
+            build_battle_fn()
+            current = "battle"
+            fade_display_key = "battle"   # 덮인 후: 전투 화면을 표시
+        fade_sc = FadeTransition(screen, W, H, on_covered=_cover, fade_in=1000, fade_out=1000)
+        fade_bg_draw = _draw_current_screen
+        current = "fade"
+
+    def end_battle_fade(build_next_fn):
+        """전투 종료 페이드: 전투 화면을 검게 덮음(1초) → build_next_fn()으로
+        다음 화면(current/관련 _sc) 준비 → 페이드아웃(1초)."""
+        nonlocal fade_sc, fade_bg_draw, fade_display_key, current
+        fade_display_key = "battle"   # 덮이기 전: 전투(STAGE CLEAR 등) 화면을 표시
+        def _cover():
+            nonlocal fade_display_key
+            build_next_fn()
+            fade_display_key = current    # 덮인 후: build_next_fn 이 설정한 새 current 화면을 표시
+        fade_sc = FadeTransition(screen, W, H, on_covered=_cover, fade_in=1000, fade_out=1000)
+        fade_bg_draw = _draw_current_screen
+        current = "fade"
+
     while True:
         dt = clock.tick(FRAMERATES[settings["fps_index"]])
 
         # 화면에 맞는 배경음악 자동 전환 (매핑에 없는 화면은 현재 BGM 유지)
-        utils.update_bgm(current)
+        utils.update_bgm(current, region=RUN.region)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -182,6 +250,61 @@ def main():
                 r = quit_dlg.handle_event(event)
                 if r == "yes":  pygame.quit(); sys.exit()
                 elif r == "no": overlay = None
+                continue
+
+            if overlay == "pause":
+                r = pause_menu.handle_event(event)
+                if r == "settings":
+                    settings_sc = SettingsScreen(screen, W, H, fonts)
+                    settings_back = "pause"        # 닫으면 일시정지 메뉴로 복귀
+                    overlay = "settings"
+                elif r == "giveup":
+                    giveup_dlg = GiveUpConfirmDialog(screen, W, H, fonts)
+                    overlay = "giveup"
+                elif r == "close":
+                    overlay = None                 # 메뉴 닫고 게임 복귀
+                continue
+
+            if overlay == "settings":
+                r = settings_sc.handle_event(event)
+                if r == "back":
+                    screen, W, H = apply_resolution()  # 해상도 변경 반영
+                    fonts = load_fonts(H)
+                    if settings_back == "pause":
+                        # 게임 중: 화면 재생성 후 일시정지 메뉴로 복귀
+                        if current == "map":
+                            map_sc = MapScreen(screen, W, H, fonts)
+                            map_sc.draw()
+                        elif current == "region_select":
+                            region_sc = RegionSelectScreen(screen, W, H, fonts)
+                            region_sc.draw()
+                        pause_bg = screen.copy()       # 해상도 바뀌었을 수 있으니 배경 재캡처
+                        pause_menu = PauseMenu(screen, W, H, fonts)
+                        overlay = "pause"
+                    else:
+                        title = TitleScreen(screen, W, H, fonts)
+                        current = "title"
+                        overlay = None
+                    settings_back = None
+                continue
+
+            if overlay == "giveup":
+                r = giveup_dlg.handle_event(event)
+                if r == "yes":
+                    RUN.end_run()                  # 회차 포기 → 휘발 상태 해제
+                    overlay = None
+                    title = TitleScreen(screen, W, H, fonts)
+                    current = "title"
+                elif r == "no":
+                    overlay = "pause"              # 포기 취소 → 일시정지 메뉴로
+                continue
+
+            if overlay == "shop":
+                r = shop_sc.handle_event(event)
+                if r == "done":
+                    overlay = None
+                    # 상점 닫음 → 다음 노드로 진행
+                    current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
                 continue
 
             if current == "compendium" and comp_stack:
@@ -248,17 +371,25 @@ def main():
                     quit_dlg = QuitDialog(screen, W, H, fonts)
                     overlay  = "quit"
                 elif a == "settings":
+                    pause_bg = screen.copy()       # 정지 배경 캡처
                     settings_sc = SettingsScreen(screen, W, H, fonts)
-                    current = "settings"
-                elif a == "gallery":
-                    gallery_sc = GalleryScreen(screen, W, H, fonts)
-                    current = "gallery"
+                    settings_back = None       # 닫으면 타이틀로 복귀
+                    overlay = "settings"
                 elif a == "start":
-                    # 로그라이크 회차 시작 → 1구간은 중앙 고정
-                    RUN.start_new_run()
-                    RUN.enter_region(run_data.FIRST_REGION)
-                    map_sc = MapScreen(screen, W, H, fonts)
-                    current = "map"
+                    # 1) 검은 화면이 덮임(1초) → 2) 뒤에서 구역선택(중앙만) 준비 → 3) 페이드아웃(1초)
+                    region_sc = None
+                    def _cover_to_region_select():
+                        nonlocal region_sc, current
+                        region_sc = RegionSelectScreen(screen, W, H, fonts, only_region=run_data.FIRST_REGION)
+                        current = "region_select"
+                    fade_sc = FadeTransition(screen, W, H, on_covered=_cover_to_region_select,
+                                             fade_in=1000, fade_out=1000)
+                    # 덮이기 전엔 타이틀, 덮인 후엔 구역선택이 보임 (region_sc 생성 시점에 자동 전환)
+                    fade_bg_draw = lambda: (region_sc.draw() if region_sc is not None else title.draw())
+                    current = "fade"
+                elif a == "boss_mode":
+                    boss_select_sc = BossSelectScreen(screen, W, H, fonts)
+                    current = "boss_select"
                 elif a == "reset":
                     reset_dlg = ResetConfirmDialog(screen, W, H, fonts)
                     overlay = "reset"
@@ -272,13 +403,41 @@ def main():
                     current = "title"
                 elif isinstance(r, tuple) and r[0] == "start":
                     preset = r[1]
-                    battle_sc = BattleScreen(screen, W, H, fonts,
-                                             enemies=preset["enemies"],
-                                             allies=preset["allies"],
-                                             enemy_formation=preset["enemy_formation"],
-                                             ally_formation=preset["ally_formation"],
-                                             gap=preset.get("gap", 0.12))
-                    current = "battle"
+                    def _build(preset=preset):
+                        nonlocal battle_sc
+                        battle_sc = BattleScreen(screen, W, H, fonts,
+                                                 enemies=preset["enemies"],
+                                                 allies=preset["allies"],
+                                                 enemy_formation=preset["enemy_formation"],
+                                                 ally_formation=preset["ally_formation"],
+                                                 gap=preset.get("gap", 0.12))
+                    start_battle_fade(_build)
+
+            elif current == "boss_select":
+                r = boss_select_sc.handle_event(event)
+                if r == "back":
+                    current = "title"
+                elif isinstance(r, tuple) and r[0] == "boss_start":
+                    _, tier, region = r
+                    bdef = (run_data.challenge_boss(region) if tier == "challenge"
+                            else run_data.extreme_boss(region) if tier == "extreme"
+                            else run_data.FINAL_BOSS.get(region))
+                    if bdef is not None:
+                        def _build(tier=tier, region=region, bdef=bdef):
+                            nonlocal battle_sc
+                            RUN.start_boss_battle(tier, region)
+                            battle_sc = rl.make_battle(screen, W, H, fonts, list(bdef["enemies"]))
+                            battle_sc.set_reward_preview(levels=0, gold=0, extra="보스 격파")
+                        start_battle_fade(_build)
+
+            elif current == "credits":
+                r = credits_sc.handle_event(event)
+                if r == "back":
+                    title = TitleScreen(screen, W, H, fonts)
+                    current = "title"
+
+            elif current == "fade":
+                pass  # 페이드 전환 중에는 입력 무시
 
             elif current == "gamestart":
                 r = gamestart_sc.handle_event(event)
@@ -288,29 +447,6 @@ def main():
                     story_sc = ActSelectScreen(screen, W, H, fonts)
                     current = "story"
 
-            elif current == "settings":
-                r = settings_sc.handle_event(event)
-                if r == "back":
-                    screen, W, H = apply_resolution()
-                    fonts  = load_fonts(H)
-                    title  = TitleScreen(screen, W, H, fonts)
-                    current = "title"
-
-            elif current == "gallery":
-                r = gallery_sc.handle_event(event)
-                if r == "back":
-                    current = "title"
-                elif r == "glossary":
-                    gloss_stack.clear()
-                    top_items = [(k, v) for k, v in GLOSSARY.items()]
-                    push_gloss(CompendiumMenuScreen(screen, W, H, fonts, "용어", top_items))
-                    current = "glossary"
-                elif r == "compendium":
-                    comp_stack.clear()
-                    top_items = [(k, v) for k, v in COMPENDIUM.items()]
-                    push_comp(CompendiumMenuScreen(screen, W, H, fonts, "도감", top_items))
-                    current = "compendium"
-
             elif current == "battle":
                 r = battle_sc.handle_event(event)
                 if r == "back":
@@ -318,63 +454,115 @@ def main():
                     if RUN.active:
                         rl.sync_player_hp_from_battle(battle_sc)
                         won = rl.battle_won(battle_sc)
-                        if not won:
+                        if RUN.boss_mode is not None:
+                            # ── 보스 모드(도전/극한/최종): 보스전만 ──────────
+                            bm = RUN.boss_mode
+                            if won:
+                                first = save_data.mark_boss_cleared(bm["tier"], bm["region"])
+                                RUN.end_run()
+                                if bm["tier"] == "final":
+                                    def _next():
+                                        nonlocal credits_sc, current
+                                        credits_sc = CreditsScreen(screen, W, H, fonts)
+                                        current = "credits"
+                                else:
+                                    def _next():
+                                        nonlocal boss_select_sc, current
+                                        boss_select_sc = BossSelectScreen(screen, W, H, fonts)
+                                        current = "boss_select"
+                            else:
+                                RUN.end_run()
+                                def _next():
+                                    nonlocal boss_select_sc, current
+                                    boss_select_sc = BossSelectScreen(screen, W, H, fonts)
+                                    current = "boss_select"
+                            end_battle_fade(_next)
+                        elif not won:
                             # 패배 → 결과(실패)
                             rl_event_battle = None
-                            result_sc = RunResultScreen(screen, W, H, fonts, success=False)
-                            current = "run_result"
+                            def _next():
+                                nonlocal result_sc, current
+                                result_sc = RunResultScreen(screen, W, H, fonts, success=False)
+                                current = "run_result"
+                            end_battle_fade(_next)
                         elif rl_event_battle is not None:
                             # ── 사건에서 파생된 전투: 승리 처리 ──
                             spec = rl_event_battle
                             rl_event_battle = None
-                            RUN.gain_exp(run_data.EXP_REWARD.get(run_data.NODE_BATTLE, 0))
+                            RUN.gain_levels(run_data.LEVEL_REWARD.get(run_data.NODE_BATTLE, 1))
                             RUN.add_gold(spec.get("gold", run_data.GOLD_REWARD.get(run_data.NODE_BATTLE, 0)))
                             drop  = spec.get("drop")
                             rkind = spec.get("reward")      # "skill" / "item" / None
                             if drop or rkind:
-                                reward_sc = RewardScreen(screen, W, H, fonts,
-                                                         kind=(rkind or "item"),
-                                                         special_item=drop,
-                                                         fixed=(None if rkind else False))
-                                current = "reward"
+                                def _next(drop=drop, rkind=rkind):
+                                    nonlocal reward_sc, current
+                                    reward_sc = RewardScreen(screen, W, H, fonts,
+                                                             kind=(rkind or "item"),
+                                                             special_item=drop,
+                                                             fixed=(None if rkind else False))
+                                    current = "reward"
                             else:
-                                current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
+                                def _next():
+                                    nonlocal current, map_sc, region_sc
+                                    current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
+                            end_battle_fade(_next)
                         else:
                             node = RUN.current_node()
-                            # 경험치/골드 정산
-                            RUN.gain_exp(run_data.EXP_REWARD.get(node, 0))
+                            # ── 전투 승리 보상: 레벨 + 골드만 (아이템/스킬은 상점·사건·보상 노드에서) ──
+                            RUN.gain_levels(run_data.LEVEL_REWARD.get(node, 0))
                             RUN.add_gold(run_data.GOLD_REWARD.get(node, 0))
                             if node == run_data.NODE_MAW:
-                                RUN.advance_node()
-                                result_sc = RunResultScreen(screen, W, H, fonts, success=True)
-                                current = "run_result"
+                                def _next():
+                                    nonlocal result_sc, current
+                                    RUN.advance_node()
+                                    result_sc = RunResultScreen(screen, W, H, fonts, success=True)
+                                    current = "run_result"
+                                end_battle_fade(_next)
                             elif node == run_data.NODE_BOSS:
                                 RUN.full_heal()
-                                reward_sc = RewardScreen(screen, W, H, fonts,
-                                                         kind="skill", special_item=rl_boss_drop)
                                 rl_boss_drop = None
-                                current = "reward"
-                            elif node == run_data.NODE_ELITE:
-                                reward_sc = RewardScreen(screen, W, H, fonts, kind="item")
-                                current = "reward"
+                                RUN.advance_node()
+                                if RUN.segment >= run_data.FINAL_SEGMENT and RUN.cleared_boss:
+                                    # 5구간(마지막 지역) 보스 클리어 = 일반 모드 완료
+                                    save_data.mark_normal_cleared()
+                                    def _next():
+                                        nonlocal result_sc, current
+                                        result_sc = RunResultScreen(screen, W, H, fonts, success=True)
+                                        current = "run_result"
+                                else:
+                                    def _next():
+                                        nonlocal current, map_sc, region_sc
+                                        current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
+                                end_battle_fade(_next)
                             else:
-                                reward_sc = RewardScreen(screen, W, H, fonts, kind="skill")
-                                current = "reward"
+                                # 일반/엘리트 전투: 보상 화면 없이 다음 노드로
+                                def _next():
+                                    nonlocal current, map_sc, region_sc
+                                    current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
+                                end_battle_fade(_next)
                     elif story_ctx is not None:
                         # 스토리 전투 종료: 승리 시 클리어, 아니면 스테이지 선택으로
                         won = (battle_sc.logic.winner == "ally")
                         _ctx = story_ctx
                         story_ctx = None
                         if won:
-                            _t = STORY[_ctx["act"]]["chapters"][_ctx["chap"]]["stages"][_ctx["stage"]]["title"]
-                            save_data.on_stage_clear(_ctx["act"], _ctx["chap"], _ctx["stage"], STORY)
-                            placeholder = PlaceholderScreen(screen, W, H, fonts, f"{_t} 클리어!")
-                            current = "placeholder"
+                            def _next(_ctx=_ctx):
+                                nonlocal placeholder, current
+                                _t = STORY[_ctx["act"]]["chapters"][_ctx["chap"]]["stages"][_ctx["stage"]]["title"]
+                                save_data.on_stage_clear(_ctx["act"], _ctx["chap"], _ctx["stage"], STORY)
+                                placeholder = PlaceholderScreen(screen, W, H, fonts, f"{_t} 클리어!")
+                                current = "placeholder"
                         else:
-                            story_sc = StageSelectScreen(screen, W, H, fonts, _ctx["act"], _ctx["chap"])
-                            current = "story"
+                            def _next(_ctx=_ctx):
+                                nonlocal story_sc, current
+                                story_sc = StageSelectScreen(screen, W, H, fonts, _ctx["act"], _ctx["chap"])
+                                current = "story"
+                        end_battle_fade(_next)
                     else:
-                        current = "title"
+                        def _next():
+                            nonlocal current
+                            current = "title"
+                        end_battle_fade(_next)
 
             elif current == "loading":
                 pass  # 로딩 중 입력 무시 (전환은 update 에서)
@@ -385,12 +573,14 @@ def main():
                     stage_data = STORY[story_ctx["act"]]["chapters"][story_ctx["chap"]]["stages"][story_ctx["stage"]]
                     if stage_data.get("battle"):
                         b = stage_data["battle"]
-                        battle_sc = BattleScreen(screen, W, H, fonts,
-                                                 enemies=b["enemies"], allies=b["allies"],
-                                                 enemy_formation=b.get("enemy_formation", "솔로"),
-                                                 ally_formation=b.get("ally_formation", "솔로"),
-                                                 gap=b.get("gap", 0.3))
-                        current = "battle"
+                        def _build(b=b):
+                            nonlocal battle_sc
+                            battle_sc = BattleScreen(screen, W, H, fonts,
+                                                     enemies=b["enemies"], allies=b["allies"],
+                                                     enemy_formation=b.get("enemy_formation", "솔로"),
+                                                     ally_formation=b.get("ally_formation", "솔로"),
+                                                     gap=b.get("gap", 0.3))
+                        start_battle_fade(_build)
                     else:
                         _t = stage_data["title"]
                         save_data.on_stage_clear(story_ctx["act"], story_ctx["chap"], story_ctx["stage"], STORY)
@@ -486,16 +676,37 @@ def main():
             elif current == "region_select" and region_sc:
                 r = region_sc.handle_event(event)
                 if r == "back":
-                    current = "title"
+                    pause_bg = screen.copy()                      # 정지 배경 캡처
+                    pause_menu = PauseMenu(screen, W, H, fonts)   # ESC → 일시정지 메뉴
+                    overlay = "pause"
                 elif isinstance(r, tuple) and r[0] == "region":
-                    RUN.enter_region(r[1])
-                    map_sc = MapScreen(screen, W, H, fonts)
-                    current = "map"
+                    if not RUN.active:
+                        # 첫 시작(중앙 선택) → 페이드인 → 회차 시작+맵 준비 → 페이드아웃
+                        chosen = r[1]
+                        map_sc = None
+                        def _cover_to_map():
+                            nonlocal map_sc, current
+                            RUN.start_new_run()
+                            RUN.enter_region(chosen)
+                            map_sc = MapScreen(screen, W, H, fonts)
+                            current = "map"
+                        fade_sc = FadeTransition(screen, W, H, on_covered=_cover_to_map,
+                                                 fade_in=1000, fade_out=1000)
+                        # 덮이기 전엔 구역선택, 덮인 후엔 맵이 보임 (map_sc 생성 시점에 자동 전환)
+                        fade_bg_draw = lambda: (map_sc.draw() if map_sc is not None else region_sc.draw())
+                        current = "fade"
+                    else:
+                        # 진행 중인 회차에서 다음 구역 선택 (기존 동작 유지)
+                        RUN.enter_region(r[1])
+                        map_sc = MapScreen(screen, W, H, fonts)
+                        current = "map"
 
             elif current == "map" and map_sc:
                 r = map_sc.handle_event(event)
                 if r == "back":
-                    current = "title"
+                    pause_bg = screen.copy()                      # 정지 배경 캡처
+                    pause_menu = PauseMenu(screen, W, H, fonts)   # ESC → 일시정지 메뉴
+                    overlay = "pause"
                 elif r == "menu":
                     rl_growth_sc = GrowthScreen(screen, W, H, fonts)
                     current = "rl_growth"
@@ -508,35 +719,43 @@ def main():
                         rl_after_dialogue = "node"
                         current = "rl_dialogue"
                     elif node == run_data.NODE_MID:
-                        # 중간 지점: 다이얼로그 → (중간보스 있으면 전투, 없으면 노드 완료)
-                        cuts = RUN.current_dialogue()
-                        rl_dialogue_sc = DialogueScreen(screen, W, H, fonts, cuts or [])
+                        # 중간 지점: 스토리 없이 (중간보스 있으면 전투, 없으면 노드 완료)
                         mb = RUN.current_mid_boss()
                         if mb:
-                            rl_after_dialogue = ("battle", mb["enemies"])
+                            def _build(mb=mb):
+                                nonlocal battle_sc
+                                battle_sc = rl.make_battle(screen, W, H, fonts, mb["enemies"])
+                                battle_sc.set_reward_preview(
+                                    levels=run_data.LEVEL_REWARD.get(run_data.NODE_BATTLE, 0),
+                                    gold=run_data.GOLD_REWARD.get(run_data.NODE_MID, 0))
+                            start_battle_fade(_build)
                         else:
-                            rl_after_dialogue = "node"
-                        current = "rl_dialogue"
+                            current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
                     elif node in (run_data.NODE_BATTLE, run_data.NODE_ELITE):
                         # 구역×회차 출현 풀에서 랜덤 조합으로 적 편성을 만든다
                         if node == run_data.NODE_ELITE:
                             enemies = encounter_data.elite_group(RUN.region, RUN.cur_visit)
                         else:
                             enemies = encounter_data.battle_group(RUN.region, RUN.cur_visit)
-                        battle_sc = rl.make_battle(screen, W, H, fonts, enemies)
-                        current = "battle"
+                        def _build(enemies=enemies, node=node):
+                            nonlocal battle_sc
+                            battle_sc = rl.make_battle(screen, W, H, fonts, enemies)
+                            battle_sc.set_reward_preview(
+                                levels=run_data.LEVEL_REWARD.get(node, 0),
+                                gold=run_data.GOLD_REWARD.get(node, 0))
+                        start_battle_fade(_build)
                     elif node == run_data.NODE_BOSS:
-                        # 보스 지점: 다이얼로그 → 전투
-                        # (마왕성은 갈래(열)별 사천왕, 그 외에는 구역×회차 보스)
-                        if RUN.region == "마왕성":
-                            boss = encounter_data.maw_boss(RUN.cur_col)
-                        else:
-                            boss = encounter_data.boss(RUN.region, RUN.cur_visit)
+                        # 보스 지점: 스토리 없이 바로 전투
+                        boss = encounter_data.boss(RUN.region, RUN.cur_visit)
                         rl_boss_drop = boss.get("drop")
-                        cuts = RUN.current_dialogue()
-                        rl_dialogue_sc = DialogueScreen(screen, W, H, fonts, cuts or [])
-                        rl_after_dialogue = ("boss", boss["enemies"])
-                        current = "rl_dialogue"
+                        def _build(boss=boss, node=node):
+                            nonlocal battle_sc
+                            battle_sc = rl.make_battle(screen, W, H, fonts, boss["enemies"])
+                            battle_sc.set_reward_preview(
+                                levels=run_data.LEVEL_REWARD.get(node, 0),
+                                gold=run_data.GOLD_REWARD.get(node, 0),
+                                extra="체력 전체 회복")
+                        start_battle_fade(_build)
                     elif node == run_data.NODE_MAW:
                         cuts = RUN.current_dialogue()
                         rl_dialogue_sc = DialogueScreen(screen, W, H, fonts, cuts or [])
@@ -563,16 +782,12 @@ def main():
                                                  fixed=rdef.get("choices"))
                         current = "reward"
                     elif node == run_data.NODE_SHOP:
-                        shop_sc = ShopScreen(screen, W, H, fonts)
-                        current = "shop"
+                        # 상점: 화면 전환 없이 맵 위에 팝업 (닫으면 다음 노드로)
+                        shop_sc = ShopScreen(screen, W, H, fonts, popup=True)
+                        overlay = "shop"
 
             elif current == "reward" and reward_sc:
                 r = reward_sc.handle_event(event)
-                if r == "done":
-                    current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
-
-            elif current == "shop" and shop_sc:
-                r = shop_sc.handle_event(event)
                 if r == "done":
                     current, map_sc, region_sc = _finish_node(screen, W, H, fonts)
 
@@ -583,8 +798,13 @@ def main():
                 elif isinstance(r, tuple) and r[0] == "battle":
                     # 사건에서 파생된 전투 (승리 후 처리는 battle 핸들러의 rl_event_battle 분기)
                     rl_event_battle = r[1]
-                    battle_sc = rl.make_battle(screen, W, H, fonts, list(rl_event_battle["enemies"]))
-                    current = "battle"
+                    def _build(spec=rl_event_battle):
+                        nonlocal battle_sc
+                        battle_sc = rl.make_battle(screen, W, H, fonts, list(spec["enemies"]))
+                        battle_sc.set_reward_preview(
+                            levels=run_data.LEVEL_REWARD.get(run_data.NODE_BATTLE, 1),
+                            gold=spec.get("gold", run_data.GOLD_REWARD.get(run_data.NODE_BATTLE, 0)))
+                    start_battle_fade(_build)
 
             elif current == "rl_growth" and rl_growth_sc:
                 r = rl_growth_sc.handle_event(event)
@@ -613,8 +833,10 @@ def main():
                     act = rl_after_dialogue
                     rl_after_dialogue = None
                     if isinstance(act, tuple) and act[0] in ("battle", "boss", "maw"):
-                        battle_sc = rl.make_battle(screen, W, H, fonts, list(act[1]))
-                        current = "battle"
+                        def _build(act=act):
+                            nonlocal battle_sc
+                            battle_sc = rl.make_battle(screen, W, H, fonts, list(act[1]))
+                        start_battle_fade(_build)
                     elif isinstance(act, tuple) and act[0] == "event":
                         # 사건 도입 다이얼로그 종료 → 선택지 화면으로
                         event_sc = EventScreen(screen, W, H, fonts, act[1])
@@ -629,20 +851,32 @@ def main():
                     title = TitleScreen(screen, W, H, fonts)
                     current = "title"
 
-        if current == "title":          title.update(dt)
+        _modal_overlay = overlay in ("pause", "settings", "giveup")
+        if fade_sc is not None:
+            if fade_sc.update(dt) == "done":
+                fade_sc = None
+                fade_bg_draw = None
+                fade_display_key = None
+        elif _modal_overlay:                 # 일시정지/설정/포기 중엔 뒤 화면 정지
+            pass
+        elif current == "title":          title.update(dt)
         elif current == "battle_select": battle_select_sc.update(dt)
+        elif current == "boss_select" and boss_select_sc: boss_select_sc.update(dt)
+        elif current == "credits" and credits_sc: credits_sc.update(dt)
         elif current == "gamestart":    gamestart_sc.update(dt)
-        elif current == "settings":     settings_sc.update(dt)
-        elif current == "gallery":      gallery_sc.update(dt)
         elif current == "compendium" and comp_stack:
                                         comp_top().update(dt)
         elif current == "glossary" and gloss_stack:
                                         gloss_top().update(dt)
-        elif current == "battle":       battle_sc.update(dt)
+        elif current == "battle":
+            battle_sc.update(dt)
+            # STAGE CLEAR 연출이 끝나면 자동으로 종료 이벤트를 발생 (기존 back 경로 재사용)
+            if getattr(battle_sc, "_battle_done", False):
+                battle_sc._battle_done = False
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
         elif current == "region_select" and region_sc:  region_sc.update(dt)
         elif current == "map" and map_sc:               map_sc.update(dt)
         elif current == "reward" and reward_sc:         reward_sc.update(dt)
-        elif current == "shop" and shop_sc:             shop_sc.update(dt)
         elif current == "event" and event_sc:           event_sc.update(dt)
         elif current == "rl_growth" and rl_growth_sc:   rl_growth_sc.update(dt)
         elif current == "rl_skill" and rl_skill_sc:     rl_skill_sc.update(dt)
@@ -662,12 +896,14 @@ def main():
                     current = "dialogue"
                 elif after_load == "battle":
                     b = stage_data["battle"]
-                    battle_sc = BattleScreen(screen, W, H, fonts,
-                                             enemies=b["enemies"], allies=b["allies"],
-                                             enemy_formation=b.get("enemy_formation", "솔로"),
-                                             ally_formation=b.get("ally_formation", "솔로"),
-                                             gap=b.get("gap", 0.3))
-                    current = "battle"
+                    def _build(b=b):
+                        nonlocal battle_sc
+                        battle_sc = BattleScreen(screen, W, H, fonts,
+                                                 enemies=b["enemies"], allies=b["allies"],
+                                                 enemy_formation=b.get("enemy_formation", "솔로"),
+                                                 ally_formation=b.get("ally_formation", "솔로"),
+                                                 gap=b.get("gap", 0.3))
+                    start_battle_fade(_build)
                 else:
                     _t = stage_data["title"]
                     save_data.on_stage_clear(story_ctx["act"], story_ctx["chap"], story_ctx["stage"], STORY)
@@ -678,12 +914,24 @@ def main():
         elif current == "placeholder":  placeholder.update(dt)
         if overlay == "reset":          reset_dlg.update(dt)
         elif overlay == "quit":         quit_dlg.update(dt)
+        elif overlay == "pause":        pause_menu.update(dt)
+        elif overlay == "settings":     settings_sc.update(dt)
+        elif overlay == "giveup":       giveup_dlg.update(dt)
+        elif overlay == "shop" and shop_sc: shop_sc.update(dt)
 
-        if current == "title":          title.draw()
+        _use_snapshot = (_modal_overlay and pause_bg is not None
+                         and pause_bg.get_size() == screen.get_size())
+        if fade_sc is not None:
+            if fade_bg_draw is not None:
+                fade_bg_draw()       # 베일 뒤 화면 (콜백으로 전환 전/후 화면을 그림)
+            fade_sc.draw()           # 검은 베일
+        elif _use_snapshot:                  # 정지된 배경 한 장만 사용 (어른거림/깜빡임 제거)
+            screen.blit(pause_bg, (0, 0))
+        elif current == "title":          title.draw()
         elif current == "battle_select": battle_select_sc.draw()
+        elif current == "boss_select" and boss_select_sc: boss_select_sc.draw()
+        elif current == "credits" and credits_sc: credits_sc.draw()
         elif current == "gamestart":    gamestart_sc.draw()
-        elif current == "settings":     settings_sc.draw()
-        elif current == "gallery":      gallery_sc.draw()
         elif current == "compendium" and comp_stack:
                                         comp_top().draw()
         elif current == "glossary" and gloss_stack:
@@ -692,7 +940,6 @@ def main():
         elif current == "region_select" and region_sc:  region_sc.draw()
         elif current == "map" and map_sc:               map_sc.draw()
         elif current == "reward" and reward_sc:         reward_sc.draw()
-        elif current == "shop" and shop_sc:             shop_sc.draw()
         elif current == "event" and event_sc:           event_sc.draw()
         elif current == "rl_growth" and rl_growth_sc:   rl_growth_sc.draw()
         elif current == "rl_skill" and rl_skill_sc:     rl_skill_sc.draw()
@@ -709,6 +956,10 @@ def main():
         elif current == "placeholder":  placeholder.draw()
         if overlay == "reset":          reset_dlg.draw()
         elif overlay == "quit":         quit_dlg.draw()
+        elif overlay == "pause":        pause_menu.draw()
+        elif overlay == "settings":     settings_sc.draw()
+        elif overlay == "giveup":       giveup_dlg.draw()
+        elif overlay == "shop" and shop_sc: shop_sc.draw()
 
         pygame.display.flip()
 

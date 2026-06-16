@@ -74,7 +74,7 @@ EVENT_DEFS = {
         ],
         "text": "낡은 보물상자를 발견했다. 열어볼까?",
         "choices": [
-            {"label": "연다 (골드)",  "outcome": ("gold", 40)},
+            {"label": "연다",  "outcome": ("gold", 40)},
             {"label": "무시한다",     "outcome": ("nothing", 0)},
         ],
     },
@@ -84,78 +84,8 @@ EVENT_DEFS = {
         ],
         "text": "지친 몸을 쉴 수 있는 안전한 공터를 찾았다.",
         "choices": [
-            {"label": "휴식한다 (체력 30% 회복)", "outcome": ("heal", 30)},
+            {"label": "휴식한다", "outcome": ("heal", 100)},
             {"label": "그냥 지나간다",            "outcome": ("nothing", 0)},
-        ],
-    },
-    "동행 제안": {
-        "cuts": [
-            _cut("???", "이봐, 거기 모험가! 혼자 다니기엔 위험한 길이야."),
-            _cut("주인공", "(같이 가자는 건가...?)"),
-        ],
-        "text": "한 모험가가 동행을 제안한다. 함께 하겠는가?",
-        "choices": [
-            {"label": "받아들인다 (동료 합류)", "outcome": ("ally", None)},
-            {"label": "거절한다",               "outcome": ("nothing", 0)},
-        ],
-    },
-    "수상한 제단": {
-        "cuts": [
-            _cut("주인공", "오래된 제단이다. 알 수 없는 마력이 흘러나오고 있다."),
-        ],
-        "text": "수상한 제단이 있다. 마력이 느껴진다.",
-        "choices": [
-            {"label": "힘을 흡수한다 (스킬 획득)", "outcome": ("skill", None)},
-            {"label": "건드리지 않는다",            "outcome": ("nothing", 0)},
-        ],
-    },
-    "행상인": {
-        "cuts": [
-            _cut("주인공", "앞서 가던 행상인이 짐을 떨어뜨리고 간 모양이다."),
-        ],
-        "text": "행상인이 물건을 떨어뜨리고 갔다.",
-        "choices": [
-            {"label": "주워서 챙긴다 (아이템 획득)", "outcome": ("item", None)},
-            {"label": "주인을 찾아준다 (골드)",       "outcome": ("gold", 30)},
-        ],
-    },
-    # ── 전투로 파생되는 사건 예시 ──────────────────────────────────
-    "매복": {
-        "cuts": [
-            _cut("???", "...거기까지다. 가진 걸 전부 내놓으시지."),
-            _cut("주인공", "노상강도인가. 순순히 보내줄 생각은 없어 보이는군."),
-        ],
-        "text": "강도들이 길을 막아섰다!",
-        "choices": [
-            {"label": "맞서 싸운다 (승리 시 아이템)",
-             "outcome": ("battle", {"enemies": ["말단병사", "말단병사"],
-                                    "reward": "item"})},
-            {"label": "골드를 내주고 지나간다 (-30골드)", "outcome": ("gold", -30)},
-        ],
-    },
-    # ── 특정 아이템 획득 사건 예시 ─────────────────────────────────
-    "버려진 검": {
-        "cuts": [
-            _cut("주인공", "전장의 흔적인가. 부러진 무기들 사이에 쓸 만한 검이 하나 보인다."),
-        ],
-        "text": "쓸 만해 보이는 검이 떨어져 있다.",
-        "choices": [
-            {"label": "주워 든다 ('낡은 검' 획득)", "outcome": ("item", "낡은 검")},
-            {"label": "내버려 둔다",                "outcome": ("nothing", 0)},
-        ],
-    },
-    # ── 지키는 자가 있는 보물 예시 (전투 → 확정 드랍 + 3택1) ───────
-    "유적의 수호자": {
-        "cuts": [
-            _cut("주인공", "무너진 유적 깊은 곳, 무언가가 봉인되어 있다."),
-            _cut("???", "...침입자. 보물에 손대는 자, 살아서 나가지 못하리라."),
-        ],
-        "text": "유적의 보물을 수호자가 지키고 있다.",
-        "choices": [
-            {"label": "수호자와 싸운다 (승리 시 보물)",
-             "outcome": ("battle", {"enemies": ["Eat_slime1", "Eat_slime2"],
-                                    "drop": "생명의 부적", "reward": "skill"})},
-            {"label": "물러난다", "outcome": ("nothing", 0)},
         ],
     },
 }
@@ -169,17 +99,12 @@ REGION_PLAN = {
     # ────────────────────────── 중앙 ──────────────────────────
     "중앙": {
         1: {
-            # 중앙 구역 1회차 — 일반 전투에 출현 가능한 몬스터 풀
-            # (말단병사를 두 번 적어 출현 확률을 높인 예시)
             "battle": ["slime", "goblin", "wild_boar"],
-            "battle_size": (1, 3),      # 한 전투에 1~3마리 랜덤 조합
-            # 중앙 구역 1회차 — 사건 (이벤트 노드)
+            "battle_size": (1, 2),
             "event": [
                 "보물상자",                    # 1
                 "휴식처",                      # 2
-                "매복",                        # 3 (전투 파생)
             ],
-            # 중앙 구역 1회차 — 엘리트 전투에 출현 가능한 몬스터 풀
             "elite": ["dojuk"],
             "elite_size": (1, 1),       # 엘리트는 2~3마리
             # 중앙 구역 1회차 — 보상 노드
@@ -190,102 +115,89 @@ REGION_PLAN = {
                  "choices": ["생명의 부적", "재생의 반지", "신속의 장화"]},
             ],
             # 중간 지점 중간보스 (None = 대화만)
-            "mid_boss": None,
+            "mid_boss": {"enemies": ["noob"]},
             # 구간 보스
-            "boss": {"enemies": ["벨라"], "name": "평원의 지배자 벨라", "drop": "낡은 검"},
-        },
-        2: {
-            # 중앙 구역 2회차 — 재방문 시 더 강한 풀 예시
-            "battle": ["말단병사", "Eat_slime1", "Eat_slime2"],
-            "battle_size": (2, 3),      # 2회차부터는 최소 2마리
-            "event": [
-                "행상인",                      # 1
-                "수상한 제단",                 # 2
-                "유적의 수호자",               # 3 (전투 파생 + 확정 드랍)
-            ],
-            # 2회차 중간보스 등장 예시
-            "mid_boss": {"enemies": ["벨라"], "name": "추격자 벨라"},
-            # elite / reward / boss / *_size 는 적지 않았으므로 1회차 것을 그대로 사용
+            "boss": {"enemies": ["small_sky"]},
         },
     },
 
     # ────────────────────────── 동부 ──────────────────────────
     "동부": {
         1: {
-            "battle": ["Eat_slime1", "Eat_slime2", "말단병사"],
+            "battle": ["wood", "monkey"],
+            "battle_size": (1, 3), 
             "event": [
-                "휴식처",                      # 1
-                "보물상자",                    # 2
-                "동행 제안",                   # 3
+                "보물상자",                    # 1
+                "휴식처",                      # 2
             ],
-            "elite": ["Eat_slime1", "Eat_slime2", "Eat_slime3"],
-            "elite_size": (3, 3),       # 항상 3마리 (고정 마릿수 예시)
+            "elite": ["fox"],
+            "elite_size": (1, 1),       # 항상 3마리 (고정 마릿수 예시)
             "reward": [
                 {"kind": "item"},              # 1
                 {"kind": "skill"},             # 2
             ],
-            "mid_boss": None,
-            "boss": {"enemies": ["마리나"], "name": "해안의 검객 마리나", "drop": "신속의 장화"},
+            "mid_boss": {"enemies": ["dosa"]},
+            "boss": {"enemies": ["kirin"]},
         },
     },
 
     # ────────────────────────── 서부 ──────────────────────────
     "서부": {
         1: {
-            "battle": ["말단병사", "Eat_slime2", "Eat_slime1"],
+            "battle": ["spin","ghost","ground_slime"],
+            "battle_size": (2, 3), 
             "event": [
-                "매복",                        # 1 (전투 파생)
-                "행상인",                      # 2
-                "휴식처",                      # 3
+                "보물상자",                    # 1
+                "휴식처",                      # 2
             ],
-            "elite": ["말단병사"],
-            "elite_size": (3, 3),
+            "elite": ["small_shell"],
+            "elite_size": (1, 1),
             "reward": [
                 {"kind": "item"},              # 1
                 {"kind": "skill"},             # 2
             ],
-            "mid_boss": None,
-            "boss": {"enemies": ["마리 따까리1", "마리 따까리2"], "name": "산적단 두목", "drop": "황금 주머니"},
+            "mid_boss": {"enemies": ["shell"]},
+            "boss": {"enemies": ["jack"]},
         },
     },
 
     # ────────────────────────── 남부 ──────────────────────────
     "남부": {
         1: {
-            "battle": ["Eat_slime3", "말단병사", "Eat_slime1", "Eat_slime2"],
+            "battle": ["leg_fish","sad_jelly", "fake_fish_man"],
+            "battle_size": (1, 2), 
             "event": [
-                "수상한 제단",                 # 1
+                "보물상자",                    # 1
                 "휴식처",                      # 2
-                "버려진 검",                   # 3 (특정 아이템)
             ],
-            "elite": ["벨라"],
-            "elite_size": (1, 1),       # 항상 벨라 단독
+            "elite": ["long_fish"],
+            "elite_size": (1, 1),       
             "reward": [
                 {"kind": "skill"},             # 1
                 {"kind": "item"},              # 2
             ],
-            "mid_boss": None,
-            "boss": {"enemies": ["벨라"], "name": "사막의 폭군", "drop": "광전사의 인장"},
+            "mid_boss": {"enemies": ["octo"]},
+            "boss": {"enemies": ["shark"]},
         },
     },
 
     # ────────────────────────── 북부 ──────────────────────────
     "북부": {
         1: {
-            "battle": ["Eat_slime1", "말단병사", "Eat_slime2", "Eat_slime3"],
+            "battle": ["bear","ice_golem","wolf"],
+            "battle_size": (1, 1), 
             "event": [
-                "동행 제안",                   # 1
-                "보물상자",                    # 2
-                "유적의 수호자",               # 3 (전투 파생)
+                "보물상자",                    # 1
+                "휴식처",                      # 2
             ],
-            "elite": ["말단병사"],
-            "elite_size": (3, 3),
+            "elite": ["snow_slime"],
+            "elite_size": (1, 1),
             "reward": [
                 {"kind": "item"},              # 1
                 {"kind": "skill"},             # 2
             ],
-            "mid_boss": None,
-            "boss": {"enemies": ["마리나"], "name": "설원의 추격자", "drop": "강철 갑옷"},
+            "mid_boss": {"enemies": ["ice_knight"]},
+            "boss": {"enemies": ["north_wyvern"]},
         },
     },
 }
@@ -297,13 +209,13 @@ REGION_PLAN = {
 MAW_REGION = "마왕성"
 
 MAW_PLAN = {
-    "battle": ["말단병사", "Eat_slime2", "Eat_slime3"],
+    "battle": [""],
     "battle_size": (2, 3),
     "event": [
         "휴식처",                                  # 1
         "수상한 제단",                             # 2
     ],
-    "elite": ["벨라", "마리 따까리1", "마리 따까리2"],
+    "elite": [""],
     "elite_size": (1, 2),
     "reward": [
         {"kind": "item"},                          # 1
@@ -312,13 +224,13 @@ MAW_PLAN = {
     "mid_boss": None,
     # 보스층 4갈래: 노드 열(col) 순서대로 0~3
     "bosses": [
-        {"enemies": ["벨라"],                     "name": "마왕군 사천왕 · 벨라"},
-        {"enemies": ["마리나"],                   "name": "마왕군 사천왕 · 마리나"},
-        {"enemies": ["보스 마리"],                "name": "마왕군 사천왕 · 마리"},
-        {"enemies": ["마리 따까리1", "마리 따까리2"], "name": "마왕군 사천왕 · 쌍둥이"},
+        {"enemies": [""]},
+        {"enemies": [""]},
+        {"enemies": [""]},
+        {"enemies": [""]},
     ],
     # 최종 마왕
-    "final": {"enemies": ["보스 마리"], "name": "마왕"},
+    "final": {"enemies": [""]},
 }
 
 

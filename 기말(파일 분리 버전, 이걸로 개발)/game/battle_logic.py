@@ -68,10 +68,93 @@ class BattleLogic:
             chosen.append(remaining.pop())
         return chosen
 
+    # ── 오로치(멀티헤드 보스) 처리 ─────────────────────────────
+    def _orochi_units(self):
+        """살아있는 오로치 머리들 (가운데 + 또다른). 오로치 전투가 아니면 빈 리스트."""
+        return [e for e in self.enemies
+                if e.hp > 0 and (getattr(e, "is_orochi_center", False)
+                                 or getattr(e, "is_orochi_head", False))]
+
+    def _orochi_pre_turn(self):
+        """매 턴 시작 시 오로치 상태 갱신:
+        - 남은 머리 수 × 11 을 모든 머리의 물/마 레벨로 주입
+        - 포식 주기(5턴) 또는 폭주(맛있구나) 시 사용할 스킬 예약
+        - 포식/단독 행동 턴에는 행동 머리 외 나머지 머리 속도 0
+        """
+        center = next((e for e in self.enemies if getattr(e, "is_orochi_center", False)), None)
+        if center is None:
+            return  # 오로치 전투 아님
+        heads = self._orochi_units()
+        n = len(heads)
+        # 1) 남은 머리 수 × 11 = 물/마 레벨 (개당 11)
+        for h in heads:
+            h.orochi_heads_alive = n
+            h.phys_level = n * 11
+            h.magic_level = n * 11
+            h.orochi_speed0 = False               # 매 턴 리셋 (아래서 필요시 다시 설정)
+            h.orochi_forced_skill = None          # 강제 스킬 예약 초기화
+
+        others = [h for h in heads if not getattr(h, "is_orochi_center", False)]
+        center_only = (len(others) == 0)
+
+        # 2) 폭주 모드(맛있구나 발동): 가운데 머리가 매 턴 아마노무라쿠모 사용 (속도 80)
+        if getattr(center, "orochi_devoured", False):
+            center.orochi_forced_skill = self._find_skill(center, "아마노무라쿠모노츠루기")
+            return
+
+        # 3) 포식 주기: 5턴마다 (5,10,15...) 머리 하나가 포식
+        #    가운데만 남았으면 포식 대신 아마노무라쿠모
+        if self.turn_count > 0 and self.turn_count % 5 == 0:
+            if center_only:
+                center.orochi_forced_skill = self._find_skill(center, "아마노무라쿠모노츠루기")
+            else:
+                # 또다른 머리 중 하나가 포식, 나머지(가운데 포함) 머리는 속도 0
+                actor = others[0]
+                actor.orochi_forced_skill = self._find_skill(actor, "포식")
+                for h in heads:
+                    if h is not actor:
+                        h.orochi_speed0 = True
+
+    def _find_skill(self, combatant, skill_name):
+        for s in combatant.skills:
+            if s["name"] == skill_name:
+                return s
+        return None
+
+    def _orochi_on_head_death(self, dead_head):
+        """오로치 머리가 죽었을 때 호출. 가운데 머리는 다른 머리가 남아있으면 죽지 않는다."""
+        center = next((e for e in self.enemies if getattr(e, "is_orochi_center", False)), None)
+        if center is None:
+            return
+        # 가운데 머리가 죽으려는 경우: 다른 머리가 살아있으면 부활(무적 유지)
+        if getattr(dead_head, "is_orochi_center", False):
+            others = [e for e in self.enemies
+                      if getattr(e, "is_orochi_head", False) and e.hp > 0]
+            if others:
+                dead_head.hp = 1   # 다른 머리 남아있으면 가운데는 죽지 않음
+
+    def _orochi_devour_kill(self, victim):
+        """'포식' 스킬로 대상이 처치되었을 때: 맛있구나 발동.
+        모든 머리 재생 + 전체 회복 + 다음 턴부터 폭주(속도 80, 매턴 아마노무라쿠모)."""
+        center = next((e for e in self.enemies if getattr(e, "is_orochi_center", False)), None)
+        if center is None:
+            return
+        # 가운데 머리 폭주 플래그
+        center.orochi_devoured = True
+        center.hp = center.hp_max
+        # 또다른 머리 전부 재생(부활) + 풀피
+        for e in self.enemies:
+            if getattr(e, "is_orochi_head", False):
+                e.hp = e.hp_max
+        self.log.append("── 오로치: 맛있구나! 모든 머리가 재생되었다 ──")
+
     # ── 턴 시작 ───────────────────────────────────────────────
     def start_turn(self):
         self.turn_count += 1
         combatants = [c for c in (self.allies + self.enemies) if c.hp > 0]
+
+        # 오로치(멀티헤드 보스) 사전 처리: 머리 수 집계 → 레벨/무적/속도/포식 주기 결정
+        self._orochi_pre_turn()
 
         order = []
         for c in combatants:
@@ -92,6 +175,7 @@ class BattleLogic:
             c.dodging   = False
             c.dodge_power = 0
             c.guarding  = False       # 방어 상태: 그 턴만 유지
+            c.damaged_by_this_turn = set()  # 이번 턴 피격 기록 초기화 (카운터 판정용)
             c.shield = 0              # 방어 보호막: 그 턴만 유지
             c.assist_shields = []     # 원호 보호막: 그 턴만 유지
             c.tick_buffs()            # 버프 지속시간 감소 (획득 턴은 미포함)
@@ -102,6 +186,12 @@ class BattleLogic:
         # 발동 조건이 있는 강력기(여우가 춤을 추니...)는 우선 선택.
         for e in self.enemies:
             if e.hp > 0 and e.skills:
+                forced = getattr(e, "orochi_forced_skill", None)
+                if forced is not None:
+                    # 오로치: 이번 턴 강제 스킬(포식/아마노무라쿠모)
+                    e.planned_skill = forced
+                    e.planned_primary = self._preview_primary(e, forced)
+                    continue
                 usable = self._usable_skills(e)
                 if not usable:
                     e.planned_skill = None
@@ -228,17 +318,22 @@ class BattleLogic:
                 self.start_turn()  # 다음 턴 → 다시 계획 단계
 
     # ── 행동: 스킬 사용 ───────────────────────────────────────
-    def consume_skill_cost(self, actor, skill):
+    def consume_skill_cost(self, actor, skill, already_charged=False):
         """스킬 발동 1회당 마력 소모 + 중첩 소모(+마력 회복) 처리.
         다단히트와 무관하게 '스킬 시작 시 1번만' 호출해야 한다.
-        모션 시작 시 이미 처리했으면(_cost_charged) 건너뛴다."""
-        if skill.pop("_cost_charged", False):
+        already_charged=True 면 모션 시작 때 이미 소모했으므로 마력 소모를 건너뛴다.
+        (스킬 객체에 상태를 남기지 않으므로 다음 턴 재사용에 영향이 없다.)"""
+        if already_charged:
             return  # 모션 시작 때 이미 소모함
+        # 마법 스킬 사용 기록 (검으로 다지는 초석 - 무형검 중첩용)
+        if skill.get("type") == "마법":
+            actor._used_magic_this_turn = True
         # 마력 소모
         cost = skill.get("cost", 0)
         if cost:
             actor.mp = max(0, actor.mp - cost)
             actor.mp_spent_this_turn = getattr(actor, "mp_spent_this_turn", 0) + cost
+            actor.mp_spent_total = getattr(actor, "mp_spent_total", 0) + cost
         # 중첩 소모 (require_buff: 발동 조건이자 소모) → 소모한 중첩만큼 마력 회복
         req = skill.get("require_buff")
         if req and req.get("consume"):
@@ -248,10 +343,13 @@ class BattleLogic:
                 actor.mp = min(actor.mp_max, actor.mp + consumed)
                 self.log.append(f"{actor.name} 마력 회복 (+{consumed})")
 
-    def use_skill(self, actor, skill, primary_target=None):
+    def use_skill(self, actor, skill, primary_target=None, already_charged=False):
         # 마력/중첩 소모 (이 경로로 들어오는 스킬: 지원/회복/단순 실행)
-        self.consume_skill_cost(actor, skill)
+        # already_charged=True 면 모션 시작 시 이미 소모했으므로 건너뛴다.
+        self.consume_skill_cost(actor, skill, already_charged=already_charged)
         targets = self.resolve_targets(actor, skill, primary_target)
+        is_devour = (skill.get("name") == "포식")
+        victims_before = {t: t.hp for t in targets} if is_devour else {}
         if self.is_support(skill):
             self._apply_support(actor, skill, targets)
             results = []
@@ -259,6 +357,13 @@ class BattleLogic:
             results = self._apply_attack(actor, skill, targets)
             # 최대 체력 비례 고정 피해 (조건부)
             self._apply_true_damage(actor, skill, targets, results)
+        # 오로치 포식 후처리: 만족감 중첩 + 처치 시 맛있구나
+        if is_devour:
+            actor.add_buff_stacks("만족감", 1, max_stacks=99, icon="")
+            for t in victims_before:
+                if victims_before[t] > 0 and t.hp <= 0:
+                    self._orochi_devour_kill(t)
+                    break
         self._check_battle_over()
         return results
 
@@ -275,6 +380,10 @@ class BattleLogic:
         dealt = {t: d for (t, d) in results if isinstance(d, (int, float))}
         for target in targets:
             if target.hp <= 0:
+                continue
+            # 오로치 가운데 머리: 다른 머리 살아있는 동안 고정 피해 무효
+            if (getattr(target, "is_orochi_center", False)
+                    and getattr(target, "orochi_heads_alive", 1) > 1):
                 continue
             if cond and not actor._eval_condition(cond, target):
                 continue
@@ -295,13 +404,13 @@ class BattleLogic:
             if target.hp <= 0:
                 continue
             if target.dodging:
-                skill_power = actor.calc_skill_power(skill)
-                if target.dodge_power > skill_power and "필중" not in skill.get("tags", []):
+                skill_power = actor.calc_skill_power(skill, target)
+                if target.dodge_power > skill_power and not actor.has_sure_hit(skill, target):
                     self.log.append(f"{target.name} 회피!")
                     results.append((target, "MISS"))
                     continue
             dmg = actor.calc_damage(skill, target) * fraction
-            applied = target.take_damage(dmg)
+            applied = target.take_damage(dmg, actor)
             self.log.append(f"{actor.name} → {target.name}: {skill['name']} ({applied})")
             results.append((target, applied))
             # 피격 밀림: 데미지가 0이어도 적중하면 뒤로 조금 밀려난다
@@ -328,11 +437,11 @@ class BattleLogic:
             total = 0
             for _ in range(hits):
                 if target.dodging:
-                    skill_power = actor.calc_skill_power(skill)
-                    if target.dodge_power > skill_power and "필중" not in skill.get("tags", []):
+                    skill_power = actor.calc_skill_power(skill, target)
+                    if target.dodge_power > skill_power and not actor.has_sure_hit(skill, target):
                         continue
                 dmg = actor.calc_damage(skill, target)
-                applied = target.take_damage(dmg)
+                applied = target.take_damage(dmg, actor)
                 total += applied
                 self._apply_hit_push(target)
             self.log.append(f"{actor.name} → {target.name}: {skill['name']} ({total})")
@@ -413,6 +522,13 @@ class BattleLogic:
     def _check_battle_over(self):
         if self.battle_over:
             return
+        # 오로치: 가운데 머리는 다른 머리가 살아있는 동안 죽지 않는다 (사망 직전 부활)
+        center = next((e for e in self.enemies if getattr(e, "is_orochi_center", False)), None)
+        if center is not None and center.hp <= 0:
+            others = [e for e in self.enemies
+                      if getattr(e, "is_orochi_head", False) and e.hp > 0]
+            if others:
+                center.hp = 1
         # 주인공 사망 → 즉시 패배
         for a in self.allies:
             if a.ctype == "player" and a.hp <= 0:
